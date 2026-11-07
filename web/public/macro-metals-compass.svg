@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" fill="none">
+  <defs>
+    <radialGradient id="ground" cx="0" cy="0" r="1" gradientTransform="matrix(0 256 -256 0 128 0)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#171816"/>
+      <stop offset="1" stop-color="#070808"/>
+    </radialGradient>
+    <linearGradient id="gold" x1="42" x2="214" y1="37" y2="219" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F1D78E"/>
+      <stop offset=".24" stop-color="#B99043"/>
+      <stop offset=".52" stop-color="#E4CA81"/>
+      <stop offset=".77" stop-color="#A67D35"/>
+      <stop offset="1" stop-color="#E7D08E"/>
+    </linearGradient>
+    <linearGradient id="needle" x1="109" x2="147" y1="44" y2="211" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#F8E5AE"/>
+      <stop offset=".42" stop-color="#C7A153"/>
+      <stop offset=".5" stop-color="#87652C"/>
+      <stop offset="1" stop-color="#D8BC76"/>
+    </linearGradient>
+    <clipPath id="disc"><circle cx="128" cy="128" r="123"/></clipPath>
+  </defs>
+  <circle cx="128" cy="128" r="127" fill="#030404"/>
+  <circle cx="128" cy="128" r="123" fill="url(#ground)"/>
+  <g clip-path="url(#disc)" opacity=".1" stroke="#E2C77E" stroke-width=".45">
+    <path d="M10 62h236M4 71h248M2 80h252M0 89h256M0 98h256M0 107h256M0 116h256M0 125h256M0 134h256M0 143h256M0 152h256M0 161h256M0 170h256M0 179h256M2 188h252M4 197h248M10 206h236"/>
+  </g>
+  <circle cx="128" cy="128" r="112" stroke="url(#gold)" stroke-width="1.7"/>
+  <circle cx="128" cy="128" r="105" stroke="#896B36" stroke-opacity=".42" stroke-width=".6"/>
+  <circle cx="128" cy="128" r="91" stroke="#C5A258" stroke-opacity=".36" stroke-width=".8"/>
+  <path d="M128 44v31m0 106v31M44 128h31m106 0h31" stroke="#D5B96F" stroke-opacity=".7" stroke-width="1.15"/>
+  <path d="m68.6 68.6 21.9 21.9m74.9 74.9 21.9 21.9m0-118.7-21.9 21.9m-74.9 74.9-21.9 21.9" stroke="#B18D4C" stroke-opacity=".36" stroke-width=".8"/>
+  <path d="m128 37 15.1 78.9L128 128l-15.1-12.1L128 37Z" fill="url(#needle)"/>
+  <path d="m128 219-15.1-78.9L128 128l15.1 12.1L128 219Z" fill="#73572B" stroke="url(#gold)" stroke-width=".85"/>
+  <path d="m37 128 78.9-15.1L128 128l-12.1 15.1L37 128Z" fill="#92723B" fill-opacity=".92" stroke="url(#gold)" stroke-width=".75"/>
+  <path d="m219 128-78.9 15.1L128 128l12.1-15.1L219 128Z" fill="#29271F" stroke="#B18D4C" stroke-opacity=".8" stroke-width=".75"/>
+  <path d="m128 79 9.2 39.8L128 128l-9.2-9.2L128 79Zm49 49-39.8 9.2L128 128l9.2-9.2L177 128Zm-49 49-9.2-39.8L128 128l9.2 9.2L128 177Zm-49-49 39.8-9.2L128 128l-9.2 9.2L79 128Z" stroke="#E2C77E" stroke-opacity=".62" stroke-width=".7"/>
+  <circle cx="128" cy="128" r="7.2" fill="#090A09" stroke="url(#gold)" stroke-width="1.35"/>
+  <circle cx="128" cy="128" r="2" fill="#E7CE8C"/>
+  <circle cx="128" cy="128" r="123" stroke="#D4B76E" stroke-opacity=".78" stroke-width="1.2"/>
+</svg>
