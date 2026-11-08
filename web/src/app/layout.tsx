@@ -3,6 +3,7 @@ import { DM_Sans, DM_Serif_Display } from "next/font/google";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
 import { getLocale } from "@/lib/locale";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
 const sans = DM_Sans({
@@ -51,6 +52,7 @@ export default async function RootLayout({ children }: Readonly<{ children: Reac
         <SiteHeader />
         <main>{children}</main>
         <SiteFooter />
+        <Analytics />
       </body>
     </html>
   );
