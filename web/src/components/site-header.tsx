@@ -30,6 +30,7 @@ export async function SiteHeader() {
           <Link href="/">{t.latest}</Link>
           <Link href="/tag/gold">{t.gold}</Link>
           <Link href="/tag/silver">{t.silver}</Link>
+          <Link href="/tag/copper">{t.copper}</Link>
           <Link href="/tag/oil">{t.oil}</Link>
           <Link href="/author/ufuk-Gedikoglu">{t.about}</Link>
         </nav>

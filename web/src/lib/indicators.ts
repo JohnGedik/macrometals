@@ -181,7 +181,7 @@ function trendLabel(direction: Trend, locale: Locale) {
 
 function makeCard(
   locale: Locale,
-  subject: "gold" | "silver",
+  subject: "gold" | "silver" | "copper",
   id: string,
   name: string,
   value: string,
@@ -199,21 +199,22 @@ function makeCard(
     trendLabel: trendLabel(direction, locale),
     impact,
     impactLabel: impactLabel(impact, locale),
-    subject: subject === "gold" ? t.onGold : t.onSilver,
+    subject: subject === "gold" ? t.onGold : subject === "silver" ? t.onSilver : t.onCopper,
     explanation,
     ...extra,
   };
 }
 
-export async function getMacroIndicators(metal: "gold" | "silver", locale: Locale) {
+export async function getMacroIndicators(metal: "gold" | "silver" | "copper", locale: Locale) {
   const t = messages[locale].macro;
-  const [dollar, gold, silver, oil, sp500, realYields] = await Promise.all([
+  const [dollar, gold, silver, oil, sp500, realYields, copper] = await Promise.all([
     getMarketSeries("DX-Y.NYB"),
     getMarketSeries("GC=F"),
-    getMarketSeries("SI=F"),
-    getMarketSeries("CL=F"),
-    getMarketSeries("^GSPC"),
+    metal === "copper" ? Promise.resolve(null) : getMarketSeries("SI=F"),
+    metal === "copper" ? Promise.resolve(null) : getMarketSeries("CL=F"),
+    metal === "copper" ? Promise.resolve(null) : getMarketSeries("^GSPC"),
     getRealYieldSeries(),
+    metal === "copper" ? getMarketSeries("HG=F") : Promise.resolve(null),
   ]);
 
   const goldMomentum = percentageChange(gold?.points ?? null);
@@ -221,6 +222,28 @@ export async function getMacroIndicators(metal: "gold" | "silver", locale: Local
   const realYieldChange = periodChange(realYields?.points ?? null);
   const dollarImpact = impactFromChange(dollarChange, -1, 0.75);
   const realYieldImpact = impactFromChange(realYieldChange, -1, 0.1);
+
+  if (metal === "copper") {
+    const copperChange = percentageChange(copper?.points ?? null);
+    const copperHistory = alignRatio(copper, gold);
+    const copperGoldAverage = mean(copperHistory);
+    const copperGoldCurrent = copper && gold && gold.current > 0 ? copper.current / gold.current : null;
+    const copperImpact = impactFromChange(copperChange, 1, 1);
+    const relativeImpact = ratioImpact(copperGoldCurrent, copperGoldAverage, true);
+
+    return {
+      cards: [
+        makeCard(locale, metal, "copper-price", t.names.copperPrice, copper ? `$${number(copper.current, locale)}/lb` : "—", trend(copperChange, 1), copperImpact, t.explanations.copperPrice[copperImpact]),
+        makeCard(locale, metal, "real-rates", t.names.realRates, realYields ? `${number(realYields.current, locale)}%` : "—", trend(realYieldChange, 0.1), realYieldImpact, t.explanations.copperRates[realYieldImpact]),
+        makeCard(locale, metal, "dxy", t.names.dxy, dollar ? number(dollar.current, locale) : "—", trend(dollarChange, 0.75), dollarImpact, t.explanations.copperDxy[dollarImpact]),
+        makeCard(locale, metal, "copper-gold", t.names.copperGold, copperGoldCurrent === null ? "—" : number(copperGoldCurrent, locale, 5), trend(percentageChange(copperHistory), 1), relativeImpact, t.explanations.copperGold[relativeImpact], {
+          comparison: { label: t.fiveYearAverage, value: copperGoldAverage === null ? "—" : number(copperGoldAverage, locale, 5) },
+        }),
+      ],
+      source: t.copperSource,
+    };
+  }
+
   const goldSpHistory = alignRatio(gold, sp500);
   const goldOilHistory = alignRatio(gold, oil);
   const goldSilverHistory = alignRatio(gold, silver);

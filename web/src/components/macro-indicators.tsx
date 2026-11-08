@@ -17,7 +17,7 @@ export function MacroIndicators({
 }: {
   cards: IndicatorCardData[];
   source: string;
-  metal: "gold" | "silver";
+  metal: "gold" | "silver" | "copper";
   locale: Locale;
 }) {
   const t = messages[locale].macro;
@@ -72,18 +72,18 @@ export function MacroIndicators({
         <summary>{t.methodologyTitle}</summary>
         <div className="macro-methodology-content">
           <section>
-            <h3>{metal === "gold" ? t.goldMethodTitle : t.silverMethodTitle}</h3>
-            <p>{metal === "gold" ? t.goldMethodology : t.silverMethodology}</p>
+            <h3>{metal === "gold" ? t.goldMethodTitle : metal === "silver" ? t.silverMethodTitle : t.copperMethodTitle}</h3>
+            <p>{metal === "gold" ? t.goldMethodology : metal === "silver" ? t.silverMethodology : t.copperMethodology}</p>
           </section>
           <section>
             <h3>{t.formulasTitle}</h3>
-            <p>{t.ratioFormula}</p>
-            <p>{t.trendFormula}</p>
-            <p>{t.stressFormula}</p>
+            <p>{metal === "copper" ? t.copperRatioFormula : t.ratioFormula}</p>
+            <p>{metal === "copper" ? t.copperTrendFormula : t.trendFormula}</p>
+            {metal !== "copper" && <p>{t.stressFormula}</p>}
           </section>
           <section>
             <h3>{t.sourcesTitle}</h3>
-            <p>{t.dataSources}</p>
+            <p>{metal === "copper" ? t.copperDataSources : t.dataSources}</p>
           </section>
           <section>
             <h3>{t.disclaimerTitle}</h3>

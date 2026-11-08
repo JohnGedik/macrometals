@@ -5,7 +5,7 @@ import { getArticles } from "@/lib/articles";
 import { getTagLabel, messages } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 
-const topics = ["Gold", "Silver", "Oil", "Inflation", "Debt", "Dollar", "Geopolitics"];
+const topics = ["Gold", "Silver", "Copper", "Oil", "Inflation", "Debt", "Dollar", "Geopolitics"];
 
 export default async function HomePage() {
   const locale = await getLocale();
