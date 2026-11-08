@@ -4,6 +4,8 @@ import { ArticleCard } from "@/components/article-card";
 import { getArticles } from "@/lib/articles";
 import { getLocale } from "@/lib/locale";
 import { getTagLabel, messages } from "@/lib/i18n";
+import { getMacroIndicators } from "@/lib/indicators";
+import { MacroIndicators } from "@/components/macro-indicators";
 
 type RouteProps = { params: Promise<{ tag: string }> };
 
@@ -21,15 +23,18 @@ export default async function TagPage({ params }: RouteProps) {
   const t = messages[locale].topic;
   const title = decodeURIComponent(tag).replaceAll("-", " ");
   const articles = (await getArticles(locale)).filter((article) => article.tags.some((item) => item.toLowerCase() === title.toLowerCase()));
-  if (!articles.length) notFound();
+  const metal = title.toLowerCase() === "gold" || title.toLowerCase() === "silver" ? title.toLowerCase() as "gold" | "silver" : null;
+  if (!articles.length && !metal) notFound();
   const label = getTagLabel(`${title[0].toUpperCase()}${title.slice(1)}`, locale);
+  const indicators = metal ? await getMacroIndicators(metal, locale) : null;
 
   return (
     <section className="listing-page content-width">
       <div className="section-kicker"><span className="eyebrow">{t.file}</span><span className="kicker-line" /></div>
       <h1>{label}</h1>
       <p className="listing-intro">{t.description.replace("{topic}", label.toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-US"))}</p>
-      <div className="article-grid">{articles.map((article, index) => <ArticleCard key={article.id} article={article} index={index + 1} locale={locale} />)}</div>
+      {indicators && <MacroIndicators cards={indicators.cards} source={indicators.source} locale={locale} />}
+      {articles.length > 0 && <div className="article-grid">{articles.map((article, index) => <ArticleCard key={article.id} article={article} index={index + 1} locale={locale} />)}</div>}
     </section>
   );
 }

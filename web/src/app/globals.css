@@ -472,6 +472,195 @@ textarea:focus-visible {
   gap: 42px 28px;
 }
 
+.macro-indicators {
+  margin: 34px 0 52px;
+  padding: 27px 0 20px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+.macro-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.macro-heading h2 {
+  margin: 6px 0 0;
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.macro-refresh {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.indicator-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 13px;
+}
+
+.indicator-card {
+  --indicator-tone: #bd5a43;
+  min-width: 0;
+  min-height: 206px;
+  padding: 16px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--indicator-tone);
+  background: var(--paper-light);
+  animation: rise-in 420ms ease-out both;
+}
+
+.indicator-card:nth-child(2) { animation-delay: 35ms; }
+.indicator-card:nth-child(3) { animation-delay: 70ms; }
+.indicator-card:nth-child(4) { animation-delay: 105ms; }
+.indicator-card:nth-child(5) { animation-delay: 140ms; }
+.indicator-card:nth-child(6) { animation-delay: 175ms; }
+
+.indicator-card.impact-bullish { --indicator-tone: #39745e; }
+.indicator-card.impact-neutral { --indicator-tone: #b99136; }
+.indicator-card.impact-bearish { --indicator-tone: #bd5a43; }
+.indicator-card.impact-unavailable { --indicator-tone: #8b918a; }
+
+.indicator-card-top {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.indicator-card-top h3 {
+  max-width: 230px;
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.4;
+}
+
+.indicator-trend {
+  display: inline-flex;
+  width: 25px;
+  height: 25px;
+  flex: 0 0 25px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  color: var(--indicator-tone);
+}
+
+.indicator-value {
+  margin: 5px 0 11px;
+  color: var(--ink);
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 29px;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.indicator-current-label {
+  display: block;
+  margin-top: 15px;
+  color: var(--muted);
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.indicator-comparison {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: -1px;
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.indicator-comparison strong {
+  color: var(--ink-soft);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.indicator-impact-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.impact-label {
+  display: inline-flex;
+  align-items: center;
+  min-height: 21px;
+  padding: 2px 6px;
+  background: #e8ebe4;
+  color: #536159;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.impact-label-bullish { background: #e3ece5; color: #28634b; }
+.impact-label-neutral { background: #f1ebd9; color: #7a6122; }
+.impact-label-bearish { background: #f3e5e0; color: #984832; }
+.impact-label-unavailable { background: #e8e9e5; color: #747b74; }
+
+.impact-subject {
+  color: var(--muted);
+  font-size: 9px;
+}
+
+.indicator-explanation {
+  margin: 9px 0 0;
+  color: #667067;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+.stress-meter {
+  margin: -1px 0 8px;
+}
+
+.stress-meter-labels {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 8px;
+}
+
+.stress-meter-labels strong {
+  color: var(--indicator-tone);
+  font-size: 9px;
+}
+
+.stress-track {
+  height: 5px;
+  margin-top: 5px;
+  overflow: hidden;
+  background: #e2e4dc;
+}
+
+.stress-track span {
+  display: block;
+  height: 100%;
+  background: var(--indicator-tone);
+  transition: width 350ms ease-out;
+}
+
+.indicator-source {
+  margin: 13px 0 0;
+  color: var(--muted);
+  font-size: 9px;
+  line-height: 1.5;
+}
+
 .article-card {
   min-width: 0;
   animation: rise-in 560ms ease-out both;
@@ -1600,6 +1789,10 @@ textarea:focus-visible {
     max-width: 760px;
   }
 
+  .indicator-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .share-actions {
     position: static;
     padding-top: 0;
@@ -1739,6 +1932,35 @@ textarea:focus-visible {
   .article-grid {
     grid-template-columns: 1fr;
     gap: 31px;
+  }
+
+  .macro-indicators {
+    margin: 27px 0 40px;
+    padding-top: 22px;
+  }
+
+  .macro-heading {
+    align-items: start;
+    flex-direction: column;
+  }
+
+  .macro-heading h2 {
+    font-size: 30px;
+  }
+
+  .indicator-grid {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .indicator-card {
+    min-height: 0;
+    padding: 14px;
+  }
+
+  .indicator-value {
+    margin: 15px 0 9px;
+    font-size: 26px;
   }
 
   .article-card h3 {
