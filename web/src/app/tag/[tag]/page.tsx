@@ -33,7 +33,7 @@ export default async function TagPage({ params }: RouteProps) {
       <div className="section-kicker"><span className="eyebrow">{t.file}</span><span className="kicker-line" /></div>
       <h1>{label}</h1>
       <p className="listing-intro">{t.description.replace("{topic}", label.toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-US"))}</p>
-      {indicators && <MacroIndicators cards={indicators.cards} source={indicators.source} locale={locale} />}
+      {indicators && <MacroIndicators cards={indicators.cards} source={indicators.source} metal={metal!} locale={locale} />}
       {articles.length > 0 && <div className="article-grid">{articles.map((article, index) => <ArticleCard key={article.id} article={article} index={index + 1} locale={locale} />)}</div>}
     </section>
   );

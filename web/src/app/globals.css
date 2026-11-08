@@ -661,6 +661,44 @@ textarea:focus-visible {
   line-height: 1.5;
 }
 
+.macro-methodology {
+  margin-top: 16px;
+  border-top: 1px solid var(--line);
+}
+
+.macro-methodology summary {
+  width: fit-content;
+  padding: 11px 0 3px;
+  color: var(--green);
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.macro-methodology summary:hover {
+  color: var(--copper);
+}
+
+.macro-methodology-content {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px 26px;
+  padding: 17px 0 4px;
+}
+
+.macro-methodology-content h3 {
+  margin: 0 0 6px;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+
+.macro-methodology-content p {
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.65;
+}
+
 .article-card {
   min-width: 0;
   animation: rise-in 560ms ease-out both;
@@ -1951,6 +1989,11 @@ textarea:focus-visible {
   .indicator-grid {
     grid-template-columns: 1fr;
     gap: 10px;
+  }
+
+  .macro-methodology-content {
+    grid-template-columns: 1fr;
+    gap: 14px;
   }
 
   .indicator-card {

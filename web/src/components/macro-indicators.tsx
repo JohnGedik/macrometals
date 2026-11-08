@@ -12,10 +12,12 @@ const trendIcons = {
 export function MacroIndicators({
   cards,
   source,
+  metal,
   locale,
 }: {
   cards: IndicatorCardData[];
   source: string;
+  metal: "gold" | "silver";
   locale: Locale;
 }) {
   const t = messages[locale].macro;
@@ -27,7 +29,7 @@ export function MacroIndicators({
           <p className="eyebrow">{locale === "tr" ? "Piyasa göstergeleri" : "Cross-asset dashboard"}</p>
           <h2 id="macro-indicators-title">{t.title}</h2>
         </div>
-        <span className="macro-refresh">{locale === "tr" ? "15 dakikada bir güncellenir" : "Refreshes every 15 minutes"}</span>
+        <span className="macro-refresh">{t.refresh}</span>
       </div>
       <div className="indicator-grid">
         {cards.map((card) => {
@@ -66,6 +68,29 @@ export function MacroIndicators({
         })}
       </div>
       <p className="indicator-source">{source}</p>
+      <details className="macro-methodology">
+        <summary>{t.methodologyTitle}</summary>
+        <div className="macro-methodology-content">
+          <section>
+            <h3>{metal === "gold" ? t.goldMethodTitle : t.silverMethodTitle}</h3>
+            <p>{metal === "gold" ? t.goldMethodology : t.silverMethodology}</p>
+          </section>
+          <section>
+            <h3>{t.formulasTitle}</h3>
+            <p>{t.ratioFormula}</p>
+            <p>{t.trendFormula}</p>
+            <p>{t.stressFormula}</p>
+          </section>
+          <section>
+            <h3>{t.sourcesTitle}</h3>
+            <p>{t.dataSources}</p>
+          </section>
+          <section>
+            <h3>{t.disclaimerTitle}</h3>
+            <p>{t.disclaimer}</p>
+          </section>
+        </div>
+      </details>
     </section>
   );
 }
