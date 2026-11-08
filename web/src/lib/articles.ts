@@ -2,6 +2,7 @@ import { readdir, readFile } from "node:fs/promises";
 import { join } from "node:path";
 import matter from "gray-matter";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { getTagLabel, type Locale } from "@/lib/i18n";
 
 export type Author = {
   slug: string;
@@ -52,30 +53,50 @@ function parseMarkdownArticle(source: string): Article {
   return { ...metadata, body: content.trim() };
 }
 
-async function getMarkdownArticles(): Promise<Article[]> {
+async function getMarkdownArticles(locale: Locale): Promise<Article[]> {
   const articlesDirectory = join(process.cwd(), "content", "articles");
   const entries = await readdir(articlesDirectory, { withFileTypes: true });
-  const sources = await Promise.all(
+  const articles = await Promise.all(
     entries
       .filter((entry) => entry.isDirectory())
-      .map((entry) => readFile(join(articlesDirectory, entry.name, "index.md"), "utf8")),
+      .map(async (entry) => {
+        const directory = join(articlesDirectory, entry.name);
+        const source = await readFile(join(directory, "index.md"), "utf8");
+        const article = parseMarkdownArticle(source);
+        if (locale === "en") return article;
+
+        let translatedSource: string;
+        try {
+          translatedSource = await readFile(join(directory, "index.tr.md"), "utf8");
+        } catch (error) {
+          if (error instanceof Error && "code" in error && error.code === "ENOENT") return article;
+          throw error;
+        }
+
+        const translated = parseMarkdownArticle(translatedSource);
+        return {
+          ...article,
+          title: translated.title,
+          summary: translated.summary,
+          body: translated.body,
+          author: { ...article.author, bio: translated.author.bio },
+        };
+      }),
   );
 
-  return sources
-    .map(parseMarkdownArticle)
-    .sort((left, right) => Date.parse(right.publishedAt) - Date.parse(left.publishedAt));
+  return articles.sort((left, right) => Date.parse(right.publishedAt) - Date.parse(left.publishedAt));
 }
 
-export async function getArticles(): Promise<Article[]> {
-  return getMarkdownArticles();
+export async function getArticles(locale: Locale = "en"): Promise<Article[]> {
+  return getMarkdownArticles(locale);
 }
 
-export async function getArticleBySlug(slug: string) {
-  return (await getArticles()).find((article) => article.slug === slug) ?? null;
+export async function getArticleBySlug(slug: string, locale: Locale = "en") {
+  return (await getArticles(locale)).find((article) => article.slug === slug) ?? null;
 }
 
-export async function getAuthorBySlug(slug: string) {
-  const articles = await getArticles();
+export async function getAuthorBySlug(slug: string, locale: Locale = "en") {
+  const articles = await getArticles(locale);
   const fallback = articles.find((article) => article.author.slug === slug)?.author ?? null;
   const supabase = await createSupabaseServerClient();
 
@@ -90,7 +111,7 @@ export async function getAuthorBySlug(slug: string) {
       const author: Author = {
         slug: data.slug,
         displayName: data.display_name ?? "Author",
-        bio: data.bio ?? "",
+        bio: locale === "tr" && fallback ? fallback.bio : data.bio ?? "",
         avatarUrl: data.avatar_url,
       };
       return {
@@ -107,11 +128,11 @@ export async function getAuthorBySlug(slug: string) {
   };
 }
 
-export function searchArticles(articles: Article[], query: string) {
+export function searchArticles(articles: Article[], query: string, locale: Locale = "en") {
   const normalized = query.trim().toLocaleLowerCase();
   if (!normalized) return [];
   return articles.filter((article) =>
-    [article.title, article.summary, ...article.tags]
+    [article.title, article.summary, ...article.tags, ...article.tags.map((tag) => getTagLabel(tag, locale))]
       .join(" ")
       .toLocaleLowerCase()
       .includes(normalized),

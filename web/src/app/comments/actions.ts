@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { messages, type Locale } from "@/lib/i18n";
 
 export type CommentState = { status: "idle" | "error" | "success"; message: string };
 
@@ -12,20 +13,22 @@ export async function addCommentAction(
   const content = String(formData.get("content") ?? "").trim();
   const articleId = String(formData.get("article_id") ?? "");
   const slug = String(formData.get("article_slug") ?? "");
+  const locale: Locale = formData.get("locale") === "tr" ? "tr" : "en";
+  const t = messages[locale].article;
   if (!content || content.length > 3000) {
-    return { status: "error", message: "Comments must be between 1 and 3,000 characters." };
+    return { status: "error", message: t.invalidComment };
   }
 
   const supabase = await createSupabaseServerClient();
-  if (!supabase) return { status: "error", message: "Comments are not configured yet." };
+  if (!supabase) return { status: "error", message: t.commentsNotConfigured };
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return { status: "error", message: "Sign in to join the conversation." };
+  if (!user) return { status: "error", message: t.signInToComment };
 
   const { error } = await supabase.from("comments").insert({ article_id: articleId, user_id: user.id, content });
-  if (error) return { status: "error", message: "Your comment could not be posted." };
+  if (error) return { status: "error", message: t.postFailed };
 
   revalidatePath(`/articles/${slug}`);
-  return { status: "success", message: "Comment posted." };
+  return { status: "success", message: t.commentPosted };
 }
 
 export async function updateCommentAction(formData: FormData) {
