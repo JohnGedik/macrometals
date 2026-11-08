@@ -564,6 +564,11 @@ textarea:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+.indicator-oil-prices .indicator-value {
+  font-size: 19px;
+  line-height: 1.3;
+}
+
 .indicator-current-label {
   display: block;
   margin-top: 15px;

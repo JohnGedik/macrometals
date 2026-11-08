@@ -23,7 +23,7 @@ export default async function TagPage({ params }: RouteProps) {
   const t = messages[locale].topic;
   const title = decodeURIComponent(tag).replaceAll("-", " ");
   const articles = (await getArticles(locale)).filter((article) => article.tags.some((item) => item.toLowerCase() === title.toLowerCase()));
-  const metal = title.toLowerCase() === "gold" || title.toLowerCase() === "silver" || title.toLowerCase() === "copper" ? title.toLowerCase() as "gold" | "silver" | "copper" : null;
+  const metal = title.toLowerCase() === "gold" || title.toLowerCase() === "silver" || title.toLowerCase() === "copper" || title.toLowerCase() === "oil" ? title.toLowerCase() as "gold" | "silver" | "copper" | "oil" : null;
   if (!articles.length && !metal) notFound();
   const label = getTagLabel(`${title[0].toUpperCase()}${title.slice(1)}`, locale);
   const indicators = metal ? await getMacroIndicators(metal, locale) : null;

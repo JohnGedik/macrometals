@@ -1,7 +1,8 @@
 import { messages, type Locale } from "@/lib/i18n";
+import { getOilInventory } from "@/lib/oil-inventory";
 
 type Point = { time: number; value: number };
-type Series = { current: number; points: Point[] };
+type Series = { current: number; points: Point[]; currentTime?: number };
 type Impact = "bullish" | "neutral" | "bearish" | "unavailable";
 type Trend = "up" | "down" | "flat" | "unavailable";
 
@@ -18,12 +19,13 @@ export type IndicatorCardData = {
   comparison?: { label: string; value: string };
   score?: number;
   severity?: string;
+  provenance?: string;
 };
 
 type MarketResponse = {
   chart?: {
     result?: Array<{
-      meta?: { regularMarketPrice?: number };
+      meta?: { regularMarketPrice?: number; regularMarketTime?: number };
       timestamp?: number[];
       indicators?: { quote?: Array<{ close?: Array<number | null> }> };
     }>;
@@ -34,9 +36,9 @@ function finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-async function getMarketSeries(symbol: string): Promise<Series | null> {
+async function getMarketSeries(symbol: string, interval = "1wk"): Promise<Series | null> {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5y&interval=1wk`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5y&interval=${interval}`;
     const response = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
       next: { revalidate: 900 },
@@ -56,7 +58,7 @@ async function getMarketSeries(symbol: string): Promise<Series | null> {
       ? result.meta.regularMarketPrice
       : points.at(-1)?.value;
 
-    return finite(current) && points.length ? { current, points } : null;
+    return finite(current) && points.length ? { current, points, currentTime: finite(result?.meta?.regularMarketTime) ? result.meta.regularMarketTime : undefined } : null;
   } catch {
     return null;
   }
@@ -181,14 +183,14 @@ function trendLabel(direction: Trend, locale: Locale) {
 
 function makeCard(
   locale: Locale,
-  subject: "gold" | "silver" | "copper",
+  subject: "gold" | "silver" | "copper" | "oil",
   id: string,
   name: string,
   value: string,
   direction: Trend,
   impact: Impact,
   explanation: string,
-  extra?: Pick<IndicatorCardData, "comparison" | "score" | "severity">,
+  extra?: Pick<IndicatorCardData, "comparison" | "score" | "severity" | "provenance">,
 ): IndicatorCardData {
   const t = messages[locale].macro;
   return {
@@ -199,14 +201,15 @@ function makeCard(
     trendLabel: trendLabel(direction, locale),
     impact,
     impactLabel: impactLabel(impact, locale),
-    subject: subject === "gold" ? t.onGold : subject === "silver" ? t.onSilver : t.onCopper,
+    subject: subject === "gold" ? t.onGold : subject === "silver" ? t.onSilver : subject === "copper" ? t.onCopper : locale === "tr" ? "Petrol üzerindeki etkisi" : "on Oil",
     explanation,
     ...extra,
   };
 }
 
-export async function getMacroIndicators(metal: "gold" | "silver" | "copper", locale: Locale) {
+export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "oil", locale: Locale) {
   const t = messages[locale].macro;
+  if (metal === "oil") return getOilIndicators(locale);
   const [dollar, gold, silver, oil, sp500, realYields, copper] = await Promise.all([
     getMarketSeries("DX-Y.NYB"),
     getMarketSeries("GC=F"),
@@ -341,5 +344,71 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper", lo
       stressCard,
     ],
     source: t.source,
+  };
+}
+
+async function getOilIndicators(locale: Locale) {
+  const t = messages[locale].macro;
+  const turkish = locale === "tr";
+  const [wti, brent, dollar, gold, inventory] = await Promise.all([
+    getMarketSeries("CL=F", "1d"),
+    getMarketSeries("BZ=F", "1d"),
+    getMarketSeries("DX-Y.NYB", "1d"),
+    getMarketSeries("GC=F", "1d"),
+    getOilInventory(),
+  ]);
+  const missing = "—";
+  const date = (time?: number) => time ? new Date(time * 1000).toISOString().slice(0, 10) : missing;
+  const stale = (time: number | undefined, days: number) => time && Date.now() - time * 1000 > days * 86400000 ? (turkish ? " · Eski veri" : " · Stale") : "";
+  const percent = (value: number | null) => value === null ? missing : `${value > 0 ? "+" : ""}${number(value, locale)}%`;
+  const wtiChange = percentageChange(wti?.points ?? null);
+  const brentChange = percentageChange(brent?.points ?? null);
+  const dollarChange = percentageChange(dollar?.points ?? null);
+  const priceImpact = impactFromChange(wtiChange, 1, 1);
+  const dollarImpact = impactFromChange(dollarChange, -1, 0.75);
+  const ratioHistory = alignRatio(gold, wti);
+  const latestRatio = ratioHistory.at(-1);
+  const ratioAverage = mean(ratioHistory);
+  const ratioImpactValue = ratioImpact(latestRatio?.value ?? null, ratioAverage, false);
+  const inventoryImpact = inventory?.average === null || !inventory ? "unavailable" : impactFromChange(inventory.change - inventory.average, -1, 0.1);
+  const explain = (impact: Impact, bullish: string, neutral: string, bearish: string, unavailable: string) => ({ bullish, neutral, bearish, unavailable })[impact];
+  const marketSource = (symbol: string, time?: number) => `Yahoo Finance (${symbol}) · ${turkish ? "Gözlem" : "Observed"}: ${date(time)}${stale(time, 5)}`;
+  const priceText = explain(priceImpact,
+    turkish ? "WTI son 90 günde yükseldi." : "WTI rose over the last 90 days.",
+    turkish ? "WTI son 90 günde fazla değişmedi." : "WTI changed little over the last 90 days.",
+    turkish ? "WTI son 90 günde düştü." : "WTI fell over the last 90 days.",
+    turkish ? "WTI geçmişi alınamadı." : "WTI history is unavailable.");
+  const inventoryText = explain(inventoryImpact,
+    turkish ? "Stok değişimi mevsimsel ortalamanın altında." : "The inventory change is below its seasonal average.",
+    turkish ? "Stok değişimi mevsimsel ortalamaya yakın." : "The inventory change is near its seasonal average.",
+    turkish ? "Stok değişimi mevsimsel ortalamanın üzerinde." : "The inventory change is above its seasonal average.",
+    turkish ? "EIA verisi veya beş yıllık karşılaştırma mevcut değil." : "EIA data or the five-year comparison is unavailable.");
+  const ratioText = explain(ratioImpactValue,
+    turkish ? "Petrol, beş yıllık ortalamaya göre altın karşısında güçlü." : "Oil is strong relative to gold versus the five-year average.",
+    turkish ? "Oran beş yıllık ortalamaya yakın." : "The ratio is near its five-year average.",
+    turkish ? "Petrol, beş yıllık ortalamaya göre altın karşısında zayıf." : "Oil is weak relative to gold versus the five-year average.",
+    turkish ? "Eşleşen altın ve petrol verisi alınamadı." : "Matching gold and oil data is unavailable.");
+  return {
+    cards: [
+      makeCard(locale, "oil", "oil-prices", "WTI / Brent (USD/bbl)", `WTI ${wti ? `$${number(wti.current, locale)}` : missing} / Brent ${brent ? `$${number(brent.current, locale)}` : missing}`, trend(wtiChange, 1), priceImpact, priceText, {
+        comparison: { label: turkish ? "90 günlük değişim" : "90-day change", value: `WTI ${percent(wtiChange)} / Brent ${percent(brentChange)}` },
+        provenance: `${marketSource("CL=F", wti?.currentTime)}; ${marketSource("BZ=F", brent?.currentTime)}`,
+      }),
+      makeCard(locale, "oil", "oil-inventory", turkish ? "ABD ham petrol stok değişimi" : "U.S. crude inventory change", inventory ? `${inventory.change > 0 ? "+" : ""}${number(inventory.change, locale)} ${turkish ? "milyon varil" : "million barrels"}` : missing, trend(inventory?.change ?? null, 0.1), inventoryImpact, inventoryText, {
+        comparison: { label: turkish ? "5 yıllık mevsimsel ortalama" : "5-year seasonal average", value: inventory?.average == null ? missing : `${number(inventory.average, locale)} ${turkish ? "milyon varil" : "million barrels"}` },
+        provenance: `EIA (WCESTUS1) · ${turkish ? "Hafta sonu" : "Week ending"}: ${inventory?.date ?? missing}${stale(inventory ? Date.parse(inventory.date) / 1000 : undefined, 14)}`,
+      }),
+      makeCard(locale, "oil", "oil-dxy", t.names.dxy, dollar ? number(dollar.current, locale) : missing, trend(dollarChange, 0.75), dollarImpact, explain(dollarImpact,
+        turkish ? "Zayıflayan dolar petrol talebini destekleyebilir." : "A weaker dollar can support demand for oil.",
+        turkish ? "Doların 90 günlük değişimi sınırlı." : "The dollar's 90-day change is modest.",
+        turkish ? "Güçlenen dolar petrol talebini baskılayabilir." : "A stronger dollar can weigh on demand for oil.",
+        turkish ? "Dolar verisi alınamadı." : "Dollar data is unavailable."), { provenance: marketSource("DX-Y.NYB", dollar?.currentTime) }),
+      makeCard(locale, "oil", "oil-curve", turkish ? "WTI vadeli işlem farkı" : "WTI futures spread", missing, "unavailable", "unavailable", turkish ? "Güncel, doğrulanmış iki vadeli kontrat kaynağı mevcut değil. Pozitif fark backwardation, negatif fark contango gösterir." : "A current, verified source for two futures maturities is unavailable. A positive spread indicates backwardation; a negative spread indicates contango.", { provenance: turkish ? "Kaynak: mevcut değil · Gözlem: —" : "Source: unavailable · Observed: —" }),
+      makeCard(locale, "oil", "oil-gold-ratio", t.names.goldOil, latestRatio ? number(latestRatio.value, locale) : missing, trend(percentageChange(ratioHistory), 1), ratioImpactValue, ratioText, {
+        comparison: { label: t.fiveYearAverage, value: ratioAverage === null ? missing : number(ratioAverage, locale) },
+        provenance: `Yahoo Finance (GC=F, CL=F) · ${turkish ? "Eşleşen kapanış" : "Matched close"}: ${date(latestRatio?.time)}${stale(latestRatio?.time, 5)}`,
+      }),
+    ],
+    source: turkish ? "Vadeli işlem fiyatları gecikmeli olabilir; spot fiyat değildir." : "Futures quotes may be delayed and are not spot prices.",
   };
 }
