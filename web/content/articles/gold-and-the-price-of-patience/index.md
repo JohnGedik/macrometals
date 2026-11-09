@@ -16,7 +16,7 @@ author:
   avatarUrl:
 ---
 
-# Gold, Real Yields, and the Dollar: Understanding the Conversation Beneath the Price
+## Gold, Real Yields, and the Dollar: Understanding the Conversation Beneath the Price
 
 Gold is often treated as a verdict on the economy. In practice, it is closer to a running argument between confidence in money and the return available elsewhere.
 

@@ -16,7 +16,7 @@ author:
   avatarUrl:
 ---
 
-# Altın, Reel Faizler ve Dolar: Fiyatın Altındaki Hikâyeyi Anlamak
+## Altın, Reel Faizler ve Dolar: Fiyatın Altındaki Hikâyeyi Anlamak
 
 Altın genellikle ekonomi hakkında verilmiş bir karar gibi yorumlanır. Oysa gerçekte altın, paraya duyulan güven ile alternatif yatırım araçlarının sunduğu getiri arasındaki bitmeyen bir tartışmaya daha çok benzer.
 
