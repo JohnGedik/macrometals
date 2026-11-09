@@ -16,7 +16,7 @@ author:
   avatarUrl:
 ---
 
-# Copper, Growth, and Electrification: Understanding the Metal That Powers the Economy
+## Copper, Growth, and Electrification: Understanding the Metal That Powers the Economy
 
 Copper is often called "Dr. Copper" because of its reputation for diagnosing the health of the global economy.
 
@@ -263,7 +263,7 @@ Together they provide two very different perspectives on the global economy.
 
 ---
 
-# Copper Seasonality by Month
+## Copper Seasonality by Month
 
 Copper does exhibit seasonal tendencies, although seasonality tends to be less reliable than in precious metals because industrial demand and macroeconomic conditions often dominate short-term patterns.
 

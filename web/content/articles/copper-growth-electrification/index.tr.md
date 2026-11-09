@@ -1,8 +1,8 @@
 ---
 id: 44444444-4444-4444-8444-444444444444
 slug: copper-growth-electrification
-title: Copper Growth & Electrification
-summary: Dr Copper
+title: Bakır, büyüme ve elektrifikasyon
+summary: Doktor Bakır, küresel büyüme ve elektrifikasyon hakkında ne söylüyor?
 coverImage: "https://images.unsplash.com/photo-1610375461246-83df859d849d?auto=format&fit=crop&w=1800&q=85&sat=-70"
 publishedAt: 2026-10-19T09:00:00.000Z
 tags:
@@ -12,7 +12,7 @@ tags:
 author:
   slug: ufuk-Gedikoglu
   displayName: Ufuk Gedikoglu
-  bio: Independent macro researcher tracking the signals in precious metals, energy, and money.
+  bio: Değerli metaller, enerji ve para piyasalarındaki sinyalleri izleyen bağımsız makroekonomi araştırmacısı.
   avatarUrl:
 ---
 
@@ -264,7 +264,7 @@ Bu nedenle altın ve bakır birlikte incelendiğinde küresel ekonomi hakkında 
 
 ---
 
-# Aylara Göre Bakır Mevsimselliği
+## Aylara Göre Bakır Mevsimselliği
 
 Bakırda da mevsimsel eğilimler gözlemlenebilir. Ancak altın ve gümüşe kıyasla mevsimsellik daha zayıf bir etkendir çünkü sanayi üretimi ve makroekonomik koşullar çoğu zaman belirleyici olur.
 
