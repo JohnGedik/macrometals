@@ -1,8 +1,8 @@
 ---
 id: 11111111-1111-4111-8111-111111111111
 slug: gold-and-the-price-of-patience
-title: Altın ve sabrın bedeli
-summary: Sessiz bir altın piyasası reel faizler, risk ve beklemenin maliyeti hakkında neler anlatabilir?
+title: Altın ve sabrın ödülü
+summary: Sessiz bir altın piyasası reel faizler, risk ve beklemenin ödülü hakkında neler anlatabilir?
 coverImage: "https://images.unsplash.com/photo-1610375461246-83df859d849d?auto=format&fit=crop&w=1800&q=85"
 publishedAt: 2026-10-28T09:00:00.000Z
 tags:
