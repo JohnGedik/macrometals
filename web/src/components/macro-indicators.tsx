@@ -1,14 +1,6 @@
-import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import type { IndicatorCardData } from "@/lib/indicators";
 import { messages, type Locale } from "@/lib/i18n";
 import { IndicatorCard } from "@/components/indicator-card";
-
-const trendIcons = {
-  up: ArrowUp,
-  down: ArrowDown,
-  flat: Minus,
-  unavailable: Minus,
-};
 
 export function MacroIndicators({
   cards,
@@ -33,41 +25,7 @@ export function MacroIndicators({
         <span className="macro-refresh">{metal === "oil" ? (locale === "tr" ? "Piyasa verisi 15 dakika, EIA verisi 6 saat önbelleklenir." : "Market data is cached for 15 minutes; EIA data for 6 hours.") : t.refresh}</span>
       </div>
       <div className="indicator-grid">
-        {metal === "gold" ? cards.map((card) => <IndicatorCard key={card.id} card={card} locale={locale} />) : cards.map((card) => {
-          const TrendIcon = trendIcons[card.trend];
-          return (
-            <article className={`indicator-card indicator-${card.id} impact-${card.impact}`} key={card.id}>
-              <div className="indicator-card-top">
-                <h3>{card.name}</h3>
-                <span className={`indicator-trend trend-${card.trend}`} aria-label={card.trendLabel} title={card.trendLabel}>
-                  <TrendIcon size={16} aria-hidden="true" />
-                </span>
-              </div>
-              <span className="indicator-current-label">{t.current}</span>
-              <div className="indicator-value">{card.value}</div>
-              {card.comparison && (
-                <div className="indicator-comparison">
-                  <span>{card.comparison.label}</span>
-                  <strong>{card.comparison.value}</strong>
-                </div>
-              )}
-              {card.score !== undefined && (
-                <div className="stress-meter">
-                  <div className="stress-meter-labels"><span>0</span><strong>{card.severity}</strong><span>100</span></div>
-                  <div className="stress-track" role="progressbar" aria-label={card.name} aria-valuemin={0} aria-valuemax={100} aria-valuenow={card.score}>
-                    <span style={{ width: `${card.score}%` }} />
-                  </div>
-                </div>
-              )}
-              <div className="indicator-impact-row">
-                <span className={`impact-label impact-label-${card.impact}`}>{card.impactLabel}</span>
-                <span className="impact-subject">{card.subject}</span>
-              </div>
-              <p className="indicator-explanation">{card.explanation}</p>
-              {card.provenance && <p className="indicator-source">{card.provenance}</p>}
-            </article>
-          );
-        })}
+        {cards.map((card) => <IndicatorCard key={card.id} card={card} locale={locale} />)}
       </div>
       <p className="indicator-source">{source}</p>
       <details className="macro-methodology">

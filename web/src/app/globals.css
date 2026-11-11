@@ -532,17 +532,17 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 
-.gold-trend-card {
+.trend-indicator-card {
   display: flex;
   min-height: 350px;
   flex-direction: column;
 }
 
-.gold-trend-card .indicator-current-label {
+.trend-indicator-card .indicator-current-label {
   margin-top: 12px;
 }
 
-.gold-trend-card .indicator-value {
+.trend-indicator-card .indicator-value {
   margin: 5px 0 8px;
 }
 
@@ -608,7 +608,7 @@ textarea:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
-.gold-trend-card .indicator-explanation {
+.trend-indicator-card .indicator-explanation {
   margin-top: auto;
   padding-top: 10px;
 }

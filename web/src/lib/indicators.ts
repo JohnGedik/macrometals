@@ -152,6 +152,10 @@ function alignRatio(left: Series | null, right: Series | null): Point[] {
   });
 }
 
+function lastYearPoints(points: Point[], endTime = points.at(-1)?.time ?? 0): IndicatorChartPoint[] {
+  return points.filter((point) => point.time >= endTime - 365 * 86400 && point.time <= endTime);
+}
+
 function mean(points: Point[]) {
   if (!points.length) return null;
   return points.reduce((total, point) => total + point.value, 0) / points.length;
@@ -250,14 +254,16 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
     const copperGoldCurrent = copper && gold && gold.current > 0 ? copper.current / gold.current : null;
     const copperImpact = impactFromChange(copperChange, 1, 1);
     const relativeImpact = ratioImpact(copperGoldCurrent, copperGoldAverage, true);
+    const chartLabel = t.lastYear;
 
     return {
       cards: [
-        makeCard(locale, metal, "copper-price", t.names.copperPrice, copper ? `$${number(copper.current, locale)}/lb` : "—", trend(copperChange, 1), copperImpact, t.explanations.copperPrice[copperImpact]),
-        makeCard(locale, metal, "real-rates", t.names.realRates, realYields ? `${number(realYields.current, locale)}%` : "—", trend(realYieldChange, 0.1), realYieldImpact, t.explanations.copperRates[realYieldImpact]),
-        makeCard(locale, metal, "dxy", t.names.dxy, dollar ? number(dollar.current, locale) : "—", trend(dollarChange, 0.75), dollarImpact, t.explanations.copperDxy[dollarImpact]),
+        makeCard(locale, metal, "copper-price", t.names.copperPrice, copper ? `$${number(copper.current, locale)}/lb` : "—", trend(copperChange, 1), copperImpact, t.explanations.copperPrice[copperImpact], { chart: { points: lastYearPoints(copper?.points ?? []), unit: " USD/lb", digits: 3, label: chartLabel, zeroBaseline: false } }),
+        makeCard(locale, metal, "real-rates", t.names.realRates, realYields ? `${number(realYields.current, locale)}%` : "—", trend(realYieldChange, 0.1), realYieldImpact, t.explanations.copperRates[realYieldImpact], { chart: { points: lastYearPoints(realYields?.points ?? []), unit: "%", digits: 2, axisDigits: 1, label: chartLabel, zeroBaseline: false } }),
+        makeCard(locale, metal, "dxy", t.names.dxy, dollar ? number(dollar.current, locale) : "—", trend(dollarChange, 0.75), dollarImpact, t.explanations.copperDxy[dollarImpact], { chart: { points: lastYearPoints(dollar?.points ?? []), unit: "", digits: 0, label: chartLabel, zeroBaseline: false } }),
         makeCard(locale, metal, "copper-gold", t.names.copperGold, copperGoldCurrent === null ? "—" : number(copperGoldCurrent, locale, 5), trend(percentageChange(copperHistory), 1), relativeImpact, t.explanations.copperGold[relativeImpact], {
           comparison: { label: t.fiveYearAverage, value: copperGoldAverage === null ? "—" : number(copperGoldAverage, locale, 5) },
+          chart: { points: lastYearPoints(copperHistory), unit: "", digits: 5, label: chartLabel, zeroBaseline: false },
         }),
       ],
       source: t.copperSource,
@@ -274,8 +280,6 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
   const goldOilCurrent = gold && oil ? gold.current / oil.current : null;
   const goldSilverCurrent = gold && silver ? gold.current / silver.current : null;
   const score = stressScore(goldMomentum, realYieldChange, dollarChange);
-  const lastYear = (points: Point[], endTime = points.at(-1)?.time ?? 0): IndicatorChartPoint[] =>
-    points.filter((point) => point.time >= endTime - 365 * 86400 && point.time <= endTime);
   const previousTime = Math.min(
     gold?.points.at(-1)?.time ?? Infinity,
     dollar?.points.at(-1)?.time ?? Infinity,
@@ -301,12 +305,12 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
       )
     : null;
   const scoreTrend = score === null || previousStress === null ? "unavailable" : trend(score - previousStress, 4);
-  const goldChart = lastYear(gold?.points ?? []);
-  const dollarChart = lastYear(dollar?.points ?? []);
-  const realRateChart = lastYear(realYields?.points ?? []);
-  const goldSpChart = lastYear(goldSpHistory);
-  const goldOilChart = lastYear(goldOilHistory);
-  const goldSilverChart = lastYear(goldSilverHistory);
+  const goldChart = lastYearPoints(gold?.points ?? []);
+  const dollarChart = lastYearPoints(dollar?.points ?? []);
+  const realRateChart = lastYearPoints(realYields?.points ?? []);
+  const goldSpChart = lastYearPoints(goldSpHistory);
+  const goldOilChart = lastYearPoints(goldOilHistory);
+  const goldSilverChart = lastYearPoints(goldSilverHistory);
   const stressChart: IndicatorChartPoint[] = goldChart.flatMap(({ time }) => {
     const currentGold = valueAt(gold?.points ?? [], time);
     const earlierGold = valueAt(gold?.points ?? [], time - 90 * 86400);
@@ -347,7 +351,7 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
     scoreTrend,
     stressImpact,
     t.explanations.stress,
-    { score: score ?? undefined, severity, chart: { points: lastYear(stressChart), unit: "", digits: 0, label: chartLabel, zeroBaseline: true } },
+    { score: score ?? undefined, severity, chart: { points: lastYearPoints(stressChart), unit: "", digits: 0, label: chartLabel, zeroBaseline: true } },
   );
 
   if (metal === "silver") {
@@ -436,6 +440,10 @@ async function getOilIndicators(locale: Locale) {
   const priceImpact = impactFromChange(wtiChange, 1, 1);
   const dollarImpact = impactFromChange(dollarChange, -1, 0.75);
   const ratioHistory = alignRatio(gold, wti);
+  const chartLabel = t.lastYear;
+  const wtiChart = lastYearPoints(wti?.points ?? []);
+  const dollarChart = lastYearPoints(dollar?.points ?? []);
+  const ratioChart = lastYearPoints(ratioHistory);
   const latestRatio = ratioHistory.at(-1);
   const ratioAverage = mean(ratioHistory);
   const ratioImpactValue = ratioImpact(latestRatio?.value ?? null, ratioAverage, false);
@@ -462,20 +470,23 @@ async function getOilIndicators(locale: Locale) {
       makeCard(locale, "oil", "oil-prices", "WTI / Brent (USD/bbl)", `WTI ${wti ? `$${number(wti.current, locale)}` : missing} / Brent ${brent ? `$${number(brent.current, locale)}` : missing}`, trend(wtiChange, 1), priceImpact, priceText, {
         comparison: { label: turkish ? "90 günlük değişim" : "90-day change", value: `WTI ${percent(wtiChange)} / Brent ${percent(brentChange)}` },
         provenance: `${marketSource("CL=F", wti?.currentTime)}; ${marketSource("BZ=F", brent?.currentTime)}`,
+        chart: { points: wtiChart, unit: " USD/bbl", digits: 2, label: `WTI · ${chartLabel}`, zeroBaseline: false },
       }),
       makeCard(locale, "oil", "oil-inventory", turkish ? "ABD ham petrol stok değişimi" : "U.S. crude inventory change", inventory ? `${inventory.change > 0 ? "+" : ""}${number(inventory.change, locale)} ${turkish ? "milyon varil" : "million barrels"}` : missing, trend(inventory?.change ?? null, 0.1), inventoryImpact, inventoryText, {
         comparison: { label: turkish ? "5 yıllık mevsimsel ortalama" : "5-year seasonal average", value: inventory?.average == null ? missing : `${number(inventory.average, locale)} ${turkish ? "milyon varil" : "million barrels"}` },
         provenance: `EIA (WCESTUS1) · ${turkish ? "Hafta sonu" : "Week ending"}: ${inventory?.date ?? missing}${stale(inventory ? Date.parse(inventory.date) / 1000 : undefined, 14)}`,
+        chart: inventory?.history ? { points: lastYearPoints(inventory.history), unit: turkish ? " mn varil" : " mn bbl", digits: 1, label: chartLabel, zeroBaseline: true } : undefined,
       }),
       makeCard(locale, "oil", "oil-dxy", t.names.dxy, dollar ? number(dollar.current, locale) : missing, trend(dollarChange, 0.75), dollarImpact, explain(dollarImpact,
         turkish ? "Zayıflayan dolar petrol talebini destekleyebilir." : "A weaker dollar can support demand for oil.",
         turkish ? "Doların 90 günlük değişimi sınırlı." : "The dollar's 90-day change is modest.",
         turkish ? "Güçlenen dolar petrol talebini baskılayabilir." : "A stronger dollar can weigh on demand for oil.",
-        turkish ? "Dolar verisi alınamadı." : "Dollar data is unavailable."), { provenance: marketSource("DX-Y.NYB", dollar?.currentTime) }),
+        turkish ? "Dolar verisi alınamadı." : "Dollar data is unavailable."), { provenance: marketSource("DX-Y.NYB", dollar?.currentTime), chart: { points: dollarChart, unit: "", digits: 0, label: chartLabel, zeroBaseline: false } }),
       makeCard(locale, "oil", "oil-curve", turkish ? "WTI vadeli işlem farkı" : "WTI futures spread", missing, "unavailable", "unavailable", turkish ? "Güncel, doğrulanmış iki vadeli kontrat kaynağı mevcut değil. Pozitif fark backwardation, negatif fark contango gösterir." : "A current, verified source for two futures maturities is unavailable. A positive spread indicates backwardation; a negative spread indicates contango.", { provenance: turkish ? "Kaynak: mevcut değil · Gözlem: —" : "Source: unavailable · Observed: —" }),
       makeCard(locale, "oil", "oil-gold-ratio", t.names.goldOil, latestRatio ? number(latestRatio.value, locale) : missing, trend(percentageChange(ratioHistory), 1), ratioImpactValue, ratioText, {
         comparison: { label: t.fiveYearAverage, value: ratioAverage === null ? missing : number(ratioAverage, locale) },
         provenance: `Yahoo Finance (GC=F, CL=F) · ${turkish ? "Eşleşen kapanış" : "Matched close"}: ${date(latestRatio?.time)}${stale(latestRatio?.time, 5)}`,
+        chart: { points: ratioChart, unit: "", digits: 1, label: chartLabel, zeroBaseline: false },
       }),
     ],
     source: turkish ? "Vadeli işlem fiyatları gecikmeli olabilir; spot fiyat değildir." : "Futures quotes may be delayed and are not spot prices.",

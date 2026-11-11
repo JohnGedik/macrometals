@@ -26,6 +26,9 @@ export function calculateInventory(points: InventoryPoint[]) {
     average: seasonal.every((value) => value !== undefined)
       ? seasonal.reduce<number>((total, value) => total + value!, 0) / 5
       : null,
+    history: changes
+      .filter((point) => Date.parse(`${point.date}T00:00:00Z`) >= date.getTime() - 365 * 86400000)
+      .map((point) => ({ time: Date.parse(`${point.date}T00:00:00Z`) / 1000, value: point.value })),
   };
 }
 

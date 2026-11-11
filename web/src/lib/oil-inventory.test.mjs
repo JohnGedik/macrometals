@@ -11,11 +11,18 @@ test("compares weekly changes with the closest week in each previous year", () =
     ["2024-12-27", 100000], ["2025-01-03", 105000],
     ["2025-12-26", 100000], ["2026-01-02", 106000],
   ].map(([date, value]) => ({ date, value }));
-  assert.deepEqual(calculateInventory(points.reverse()), { date: "2026-01-02", change: 6, average: 3 });
+  const result = calculateInventory(points.reverse());
+  assert.equal(result.date, "2026-01-02");
+  assert.equal(result.change, 6);
+  assert.equal(result.average, 3);
+  assert.ok(result.history.some((point) => point.time === Date.parse("2026-01-02T00:00:00Z") / 1000 && point.value === 6));
 });
 
 test("does not invent a seasonal average or bridge missing weeks", () => {
-  assert.deepEqual(calculateInventory([{ date: "2026-01-02", value: 1000 }, { date: "2026-01-09", value: 2000 }]), { date: "2026-01-09", change: 1, average: null });
+  const result = calculateInventory([{ date: "2026-01-02", value: 1000 }, { date: "2026-01-09", value: 2000 }]);
+  assert.equal(result.date, "2026-01-09");
+  assert.equal(result.change, 1);
+  assert.equal(result.average, null);
   assert.equal(calculateInventory([{ date: "2026-01-02", value: 1000 }, { date: "2026-01-16", value: 2000 }]), null);
 });
 
