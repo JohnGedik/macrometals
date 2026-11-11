@@ -28,6 +28,7 @@ export async function SiteHeader() {
         </Link>
         <nav className="primary-nav" aria-label="Main navigation">
           <Link href="/">{t.latest}</Link>
+          <Link href="/community">{t.community}</Link>
           <Link href="/tag/gold">{t.gold}</Link>
           <Link href="/tag/silver">{t.silver}</Link>
           <Link href="/tag/copper">{t.copper}</Link>

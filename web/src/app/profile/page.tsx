@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Avatar } from "@/components/avatar";
 import { saveProfileAction } from "@/app/profile/actions";
@@ -24,9 +25,13 @@ export default async function ProfilePage({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("display_name, bio, avatar_url, slug")
+    .select("display_name, bio, avatar_url, slug, username")
     .eq("id", user.id)
     .maybeSingle();
+  const { data: drafts } = await supabase.from("articles")
+    .select("id, slug, title, updated_at")
+    .eq("author_id", user.id).eq("published", false)
+    .order("updated_at", { ascending: false });
   const params = await searchParams;
   const locale = await getLocale();
   const t = messages[locale].profile;
@@ -60,10 +65,15 @@ export default async function ProfilePage({
           <span className="eyebrow">{t.authorPage}</span>
           <h3>{t.publicWriting}</h3>
           <p className="muted-copy">{t.writingDescription}</p>
-          {profile?.slug && <a className="text-link" href={`/author/${profile.slug}`}>{t.viewAuthor} <span>↗</span></a>}
+          {profile?.username && <Link className="text-link" href={`/profile/${profile.username}`}>{t.viewProfile} <span>↗</span></Link>}
+          <Link className="button-primary profile-write-link" href="/write">{t.writeArticle} <span>→</span></Link>
           <div className="profile-email-note"><span className="eyebrow">{t.signedInAs}</span><span>{user.email}</span></div>
         </aside>
       </div>
+      <section className="profile-drafts">
+        <div className="section-heading"><div><p className="eyebrow">{t.account}</p><h2>{t.drafts}</h2></div></div>
+        {drafts?.length ? <ul>{drafts.map((draft) => <li key={draft.id}><Link href={`/write/${draft.slug}`}>{draft.title}</Link><span>{new Date(draft.updated_at).toLocaleDateString(locale === "tr" ? "tr-TR" : "en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}</span></li>)}</ul> : <p className="muted-copy">{locale === "tr" ? "Henüz taslak yok." : "No drafts yet."}</p>}
+      </section>
     </section>
   );
 }

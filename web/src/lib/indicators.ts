@@ -2,6 +2,7 @@ import { messages, type Locale } from "@/lib/i18n";
 import { getOilInventory } from "@/lib/oil-inventory";
 
 type Point = { time: number; value: number };
+export type IndicatorChartPoint = Point & { label?: string };
 type Series = { current: number; points: Point[]; currentTime?: number };
 type Impact = "bullish" | "neutral" | "bearish" | "unavailable";
 type Trend = "up" | "down" | "flat" | "unavailable";
@@ -20,6 +21,7 @@ export type IndicatorCardData = {
   score?: number;
   severity?: string;
   provenance?: string;
+  chart?: { points: IndicatorChartPoint[]; unit: string; digits: number; label: string; zeroBaseline: boolean };
 };
 
 type MarketResponse = {
@@ -190,7 +192,7 @@ function makeCard(
   direction: Trend,
   impact: Impact,
   explanation: string,
-  extra?: Pick<IndicatorCardData, "comparison" | "score" | "severity" | "provenance">,
+  extra?: Pick<IndicatorCardData, "comparison" | "score" | "severity" | "provenance" | "chart">,
 ): IndicatorCardData {
   const t = messages[locale].macro;
   return {
@@ -257,6 +259,17 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
   const goldOilCurrent = gold && oil ? gold.current / oil.current : null;
   const goldSilverCurrent = gold && silver ? gold.current / silver.current : null;
   const score = stressScore(goldMomentum, realYieldChange, dollarChange);
+  const lastYear = (points: Point[], endTime = points.at(-1)?.time ?? 0): IndicatorChartPoint[] =>
+    points.filter((point) => point.time >= endTime - 365 * 86400 && point.time <= endTime);
+  const fromStart = (points: Point[], asPercent: boolean): IndicatorChartPoint[] => {
+    const year = lastYear(points);
+    const baseline = year[0]?.value;
+    if (baseline === undefined) return [];
+    return year.map((point) => ({
+      time: point.time,
+      value: asPercent && baseline !== 0 ? ((point.value - baseline) / Math.abs(baseline)) * 100 : point.value - baseline,
+    }));
+  };
   const previousTime = Math.min(
     gold?.points.at(-1)?.time ?? Infinity,
     dollar?.points.at(-1)?.time ?? Infinity,
@@ -282,21 +295,45 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
       )
     : null;
   const scoreTrend = score === null || previousStress === null ? "unavailable" : trend(score - previousStress, 4);
+  const goldChart = lastYear(gold?.points ?? []);
+  const dollarChart = fromStart(dollar?.points ?? [], true);
+  const realRateChart = fromStart(realYields?.points ?? [], false);
+  const goldSpChart = fromStart(goldSpHistory, true);
+  const goldOilChart = fromStart(goldOilHistory, true);
+  const goldSilverChart = fromStart(goldSilverHistory, true);
+  const stressChart: IndicatorChartPoint[] = goldChart.flatMap(({ time }) => {
+    const currentGold = valueAt(gold?.points ?? [], time);
+    const earlierGold = valueAt(gold?.points ?? [], time - 90 * 86400);
+    const currentRates = valueAt(realYields?.points ?? [], time);
+    const earlierRates = valueAt(realYields?.points ?? [], time - 90 * 86400);
+    const currentDollar = valueAt(dollar?.points ?? [], time);
+    const earlierDollar = valueAt(dollar?.points ?? [], time - 90 * 86400);
+    if (!currentGold || !earlierGold || currentRates === null || earlierRates === null || !currentDollar || !earlierDollar) return [];
+    const value = stressScore(
+      ((currentGold - earlierGold) / earlierGold) * 100,
+      currentRates - earlierRates,
+      ((currentDollar - earlierDollar) / earlierDollar) * 100,
+    );
+    return value === null ? [] : [{ time, value }];
+  });
+  const normalizedStressChart = fromStart(stressChart, false);
   const severity = score === null
     ? t.unavailable
-    : score < 25
+    : score <= 25
       ? t.severity.low
-      : score < 50
+      : score <= 50
         ? t.severity.moderate
-        : score < 75
+        : score <= 75
           ? t.severity.elevated
           : t.severity.high;
   const stressImpact: Impact = score === null ? "unavailable" : score >= 65 ? "bullish" : score <= 35 ? "bearish" : "neutral";
   const direction = metal === "gold" ? "gold" : "silver";
   const marketTrend = dollarChange === null ? "unavailable" : trend(dollarChange, 0.75);
   const realTrend = trend(realYieldChange, 0.1);
-  const dxyCard = makeCard(locale, direction, "dxy", t.names.dxy, dollar ? number(dollar.current, locale) : "—", marketTrend, dollarImpact, t.explanations.dxy[dollarImpact]);
-  const realRateCard = makeCard(locale, direction, "real-rates", t.names.realRates, realYields ? `${number(realYields.current, locale)}%` : "—", realTrend, realYieldImpact, t.explanations.realRates[realYieldImpact]);
+  const chartLabel = t.chartFromStart;
+  const zeroBaseline = true;
+  const dxyCard = makeCard(locale, direction, "dxy", t.names.dxy, dollar ? number(dollar.current, locale) : "—", marketTrend, dollarImpact, t.explanations.dxy[dollarImpact], { chart: { points: dollarChart, unit: "%", digits: 2, label: chartLabel, zeroBaseline } });
+  const realRateCard = makeCard(locale, direction, "real-rates", t.names.realRates, realYields ? `${number(realYields.current, locale)}%` : "—", realTrend, realYieldImpact, t.explanations.realRates[realYieldImpact], { chart: { points: realRateChart, unit: locale === "tr" ? " yüzde puan" : " pp", digits: 2, label: chartLabel, zeroBaseline } });
   const stressCard = makeCard(
     locale,
     direction,
@@ -306,7 +343,7 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
     scoreTrend,
     stressImpact,
     t.explanations.stress,
-    { score: score ?? undefined, severity },
+    { score: score ?? undefined, severity, chart: { points: normalizedStressChart, unit: locale === "tr" ? " puan" : " pts", digits: 0, label: chartLabel, zeroBaseline } },
   );
 
   if (metal === "silver") {
@@ -317,6 +354,7 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
         dxyCard,
         makeCard(locale, direction, "gold-silver", t.names.goldSilver, goldSilverCurrent === null ? "—" : number(goldSilverCurrent, locale), trend(percentageChange(goldSilverHistory), 1), silverImpact, t.explanations.goldSilver["silver"][silverImpact], {
           comparison: { label: t.historicalAverage, value: goldSilverAverage === null ? "—" : number(goldSilverAverage, locale) },
+          chart: { points: goldSilverChart, unit: "%", digits: 2, label: chartLabel, zeroBaseline },
         }),
         stressCard,
       ],
@@ -327,6 +365,16 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
   const goldSpImpact = ratioImpact(goldSpCurrent, goldSpAverage, true);
   const goldOilImpact = ratioImpact(goldOilCurrent, goldOilAverage, true);
   const goldSilverImpact = ratioImpact(goldSilverCurrent, goldSilverAverage, true);
+  const seasonalReturns = [1.1, 0.8, -0.4, 0.5, 0.1, -0.6, 1.0, 1.8, 1.4, 0.3, 1.9, 1.2];
+  const currentMonth = new Date().getUTCMonth();
+  const seasonalityImpact = (value: number): Exclude<Impact, "unavailable"> =>
+    value >= 0.5 ? "bullish" : value >= 0 ? "neutral" : "bearish";
+  const currentSeasonality = seasonalReturns[currentMonth];
+  const currentSeasonalityImpact = seasonalityImpact(currentSeasonality);
+  const monthFormatter = new Intl.DateTimeFormat(locale === "tr" ? "tr-TR" : "en-US", { month: "short", timeZone: "UTC" });
+  const seasonalityMonths = seasonalReturns.map((_, month) =>
+    monthFormatter.format(new Date(Date.UTC(2020, month, 1))),
+  );
 
   return {
     cards: [
@@ -334,12 +382,29 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
       dxyCard,
       makeCard(locale, direction, "gold-sp", t.names.goldSp, goldSpCurrent === null ? "—" : number(goldSpCurrent, locale, 3), trend(percentageChange(goldSpHistory), 1), goldSpImpact, t.explanations.goldSp[goldSpImpact], {
         comparison: { label: t.fiveYearAverage, value: goldSpAverage === null ? "—" : number(goldSpAverage, locale, 3) },
+        chart: { points: goldSpChart, unit: "%", digits: 2, label: chartLabel, zeroBaseline },
       }),
       makeCard(locale, direction, "gold-oil", t.names.goldOil, goldOilCurrent === null ? "—" : number(goldOilCurrent, locale, 2), trend(percentageChange(goldOilHistory), 1), goldOilImpact, t.explanations.goldOil[goldOilImpact], {
         comparison: { label: t.fiveYearAverage, value: goldOilAverage === null ? "—" : number(goldOilAverage, locale, 2) },
+        chart: { points: goldOilChart, unit: "%", digits: 2, label: chartLabel, zeroBaseline },
       }),
       makeCard(locale, direction, "gold-silver", t.names.goldSilver, goldSilverCurrent === null ? "—" : number(goldSilverCurrent, locale, 2), trend(percentageChange(goldSilverHistory), 1), goldSilverImpact, t.explanations.goldSilver["gold"][goldSilverImpact], {
         comparison: { label: t.historicalAverage, value: goldSilverAverage === null ? "—" : number(goldSilverAverage, locale, 2) },
+        chart: { points: goldSilverChart, unit: "%", digits: 2, label: chartLabel, zeroBaseline },
+      }),
+      makeCard(locale, direction, "gold-seasonality", t.names.goldSeasonality, `${seasonalityMonths[currentMonth]} ${currentSeasonality > 0 ? "+" : ""}${number(currentSeasonality, locale, 1)}%`, trend(currentSeasonality - seasonalReturns[(currentMonth + 11) % 12], 0.05), currentSeasonalityImpact, t.explanations.goldSeasonality, {
+        severity: currentSeasonality < 0 ? t.severity.low : currentSeasonality < 0.5 ? t.seasonalityLevel.neutral : currentSeasonality <= 1 ? t.severity.elevated : t.severity.high,
+        chart: {
+          points: seasonalityMonths.map((month, index) => ({
+            time: Date.UTC(new Date().getUTCFullYear(), index, 1) / 1000,
+            value: seasonalReturns[index],
+            label: month,
+          })),
+          unit: "%",
+          digits: 1,
+          label: t.seasonalityChartDescription,
+          zeroBaseline,
+        },
       }),
       stressCard,
     ],

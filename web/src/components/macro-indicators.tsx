@@ -1,6 +1,7 @@
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import type { IndicatorCardData } from "@/lib/indicators";
 import { messages, type Locale } from "@/lib/i18n";
+import { IndicatorCard } from "@/components/indicator-card";
 
 const trendIcons = {
   up: ArrowUp,
@@ -23,16 +24,16 @@ export function MacroIndicators({
   const t = messages[locale].macro;
 
   return (
-    <section className="macro-indicators" aria-labelledby="macro-indicators-title">
+    <section className={`macro-indicators${metal === "gold" ? " macro-gold" : ""}`} aria-labelledby="macro-indicators-title">
       <div className="macro-heading">
         <div>
           <p className="eyebrow">{locale === "tr" ? "Piyasa göstergeleri" : "Cross-asset dashboard"}</p>
-          <h2 id="macro-indicators-title">{t.title}</h2>
+          <h2 id="macro-indicators-title">{metal === "gold" ? t.goldDashboardTitle : t.title}</h2>
         </div>
         <span className="macro-refresh">{metal === "oil" ? (locale === "tr" ? "Piyasa verisi 15 dakika, EIA verisi 6 saat önbelleklenir." : "Market data is cached for 15 minutes; EIA data for 6 hours.") : t.refresh}</span>
       </div>
       <div className="indicator-grid">
-        {cards.map((card) => {
+        {metal === "gold" ? cards.map((card) => <IndicatorCard key={card.id} card={card} locale={locale} />) : cards.map((card) => {
           const TrendIcon = trendIcons[card.trend];
           return (
             <article className={`indicator-card indicator-${card.id} impact-${card.impact}`} key={card.id}>

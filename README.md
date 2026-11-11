@@ -10,12 +10,12 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:3000. The journal and seeded sample articles render without Supabase credentials; authentication, comments, profile storage, and newsletter persistence require a Supabase project.
+Open http://localhost:3000. The journal and seeded sample articles render without Supabase credentials; authentication, member publishing, voting, comments, profile storage, and newsletter persistence require a Supabase project.
 
 ## Supabase setup
 
 1. Copy `web/.env.example` to `web/.env.local` and set `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from the Supabase project settings.
-2. Apply [`web/supabase/migrations/20261107000000_initial_schema.sql`](web/supabase/migrations/20261107000000_initial_schema.sql) in the Supabase SQL editor or with the Supabase CLI.
+2. Apply [`web/supabase/migrations/20261107000000_initial_schema.sql`](web/supabase/migrations/20261107000000_initial_schema.sql), then [`web/supabase/migrations/20261111000000_community_publishing.sql`](web/supabase/migrations/20261111000000_community_publishing.sql), in order, in the Supabase SQL editor or with the Supabase CLI.
 3. In Supabase Authentication, enable Google and email providers. Email login uses a passwordless sign-in link. Add `http://localhost:3000/auth/callback` and the deployed callback URL to the allowed redirect URLs.
 4. Configure the Google OAuth client ID and secret in Supabase, and set its callback URL to the Supabase-provided Google provider callback.
 
@@ -27,17 +27,22 @@ The Next.js site uses `@supabase/ssr` for its cookie-based login flow. `@supabas
 
 - `/` publication home
 - `/articles/[slug]` article, comments, share links, and social metadata
+- `/community` member-published articles with latest, top-rated, most-viewed, and trending sorts
+- `/write` create articles and drafts; `/write/[slug]` edit your own articles
 - `/tag/[tag]` related articles
-- `/search?q=...` title, summary, and tag search
+- `/search?q=...` article content, title, summary, category, author, and tag search
 - `/author/[slug]` author profile and articles
+- `/profile/[username]` public member profile, published articles, and received votes
 - `/login` Google or email-link sign-in
-- `/profile` signed-in profile and avatar editor
+- `/profile` signed-in profile and avatar editor, draft list, and writing link
 
 ## Writing articles
 
 Each article is a Markdown document at `web/content/articles/<slug>/index.md`. YAML frontmatter defines its `id`, `slug`, `title`, `summary`, `coverImage`, `publishedAt`, `tags`, and `author`; the document body supports standard Markdown. Keep the article `id` aligned with its row in the Supabase `articles` table so comments continue to reference the correct article.
 
 To provide a Turkish translation, add `index.tr.md` in the same article directory with matching `id`, `slug`, `tags`, and author identity. Translate the title, summary, author bio, and body. If `index.tr.md` is absent, that article displays in English while the rest of the interface remains Turkish.
+
+Members can publish Markdown articles from `/write`. Drafts are private to their author; publishing makes the article available in the Community feed and existing article routes. Voting is one vote per account per article; selecting the active direction removes the vote, and selecting the opposite direction changes it. Commenting continues to use the existing flat comment system.
 
 ## Macro indicator methodology
 
