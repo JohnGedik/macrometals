@@ -23,8 +23,7 @@ export function MacroSummaryCard({ input, locale, isSample = false, result }: {
 
   return (
     <section className={`macro-summary-card outlook-${data.outlook}`} aria-labelledby={`${input.commodity}-macro-summary-title`}>
-      <h3 id={`${input.commodity}-macro-summary-title`}>{t.macroSummary}</h3>
-      <p className="macro-summary-subtitle" title={t.macroSummaryAutomationNote}>{t.macroSummarySubtitle}</p>
+      <h3 id={`${input.commodity}-macro-summary-title`} title={t.macroSummaryAutomationNote}>{t.macroSummary}</h3>
       <div className="macro-summary-status">
         <p className="macro-summary-outlook">{outlookLabels[data.outlook]}</p>
         <div className="macro-summary-confidence">

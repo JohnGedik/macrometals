@@ -630,8 +630,7 @@ textarea:focus-visible {
   background: var(--summary-bg);
   color: var(--summary-text);
 }
-.macro-summary-card h3 { margin: 0 0 3px; font-size: 16px; }
-.macro-summary-subtitle { margin: 0 0 10px; color: var(--summary-muted); font-size: 11px; font-weight: 400; line-height: 1.4; }
+.macro-summary-card h3 { margin: 0 0 8px; font-size: 16px; line-height: 1.4; }
 .macro-summary-status { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px; }
 .macro-summary-outlook { margin: 0; font-size: 13px; font-weight: 700; }
 .outlook-bullish .macro-summary-outlook, .outlook-strongly-bullish .macro-summary-outlook { color: var(--summary-positive); }
