@@ -1,7 +1,8 @@
 import { messages, type Locale } from "@/lib/i18n";
 import { getOilInventory } from "@/lib/oil-inventory";
 import { getCommodityConfiguration } from "@/lib/commodity-config";
-import { scoreCommodity, type CommodityConfiguration } from "@/lib/commodity-score";
+import { scoreCommodity, type CommodityConfiguration, type IndicatorDataHealth } from "@/lib/commodity-score";
+import { hydrateCommodityObservations } from "@/lib/commodity-data";
 
 export type { CommodityKey } from "@/lib/commodity-config";
 
@@ -24,19 +25,23 @@ export type IndicatorCardData = {
   group?: "tier1" | "tier2" | "context";
   previousValue?: string;
   yoyChange?: string;
+  ninetyDayChange?: string;
   comparison?: { label: string; value: string };
   score?: number;
-  factorScore?: number;
+  factorScore?: number | null;
   commodityName?: string;
   priceCorrelation?: number;
+  dataHealth?: IndicatorDataHealth;
   severity?: string;
   provenance?: string;
   chart?: { points: IndicatorChartPoint[]; unit: string; digits: number; axisDigits?: number; label: string; zeroBaseline: boolean };
 };
 
 export type MacroScoreSummary = {
-  score: number;
-  status: Exclude<Impact, "unavailable">;
+  score: number | null;
+  coverage: number;
+  dataMix: { sourcedWeight: number; sampleWeight: number; excludedWeight: number };
+  status: Impact;
   statusLabel: string;
   classification: string;
   note: string;
@@ -113,6 +118,7 @@ async function getRealYieldSeries(): Promise<Series | null> {
     const rows = (await response.text()).trim().split(/\r?\n/).slice(1);
     const points = rows.flatMap((row) => {
       const [date, rawValue] = row.split(",");
+      if (!rawValue?.trim() || rawValue.trim() === ".") return [];
       const value = Number(rawValue);
       const time = Date.parse(`${date}T12:00:00Z`) / 1000;
       return date && finite(value) && Number.isFinite(time) ? [{ time, value }] : [];
@@ -241,9 +247,14 @@ function macroScoreCards(locale: Locale, config: CommodityConfiguration) {
   const cards = config.indicators.map((metric, index) => {
     const { current, previous, change: yoy, status: impact } = result.indicators[index];
     const unitLabel = metric.unit[locale];
-    const value = (amount: number) => `${metric.prefix}${number(amount, locale, metric.digits)}${unitLabel}`;
-    const changeValue = `${yoy > 0 ? "+" : ""}${number(yoy, locale, metric.changeKind === "points" ? 2 : 1)}${metric.changeKind === "points" ? (locale === "tr" ? " yüzde puan" : " pp") : metric.changeKind === "index-points" ? (locale === "tr" ? " endeks puanı" : " index points") : "%"}`;
-    const points = config.years
+    const value = (amount: number | null) => amount === null ? "—" : `${metric.prefix}${number(amount, locale, metric.digits)}${unitLabel}`;
+    const formatChange = (change: number | null) => change === null ? "—" : `${change > 0 ? "+" : ""}${number(change, locale, metric.changeKind === "points" ? 2 : 1)}${metric.changeKind === "points" ? (locale === "tr" ? " yüzde puan" : " pp") : metric.changeKind === "index-points" ? (locale === "tr" ? " endeks puanı" : " index points") : "%"}`;
+    const latest = metric.observations?.at(-1);
+    const target = latest ? latest.time - 90 * 86400 : 0;
+    const prior90 = metric.observations?.findLast((point) => point.time <= target);
+    const valid90 = metric.dataHealth?.status === "fresh" && latest && prior90 && target - prior90.time <= 7 * 86400;
+    const change90 = valid90 ? metric.changeKind === "percentage" ? prior90.value === 0 ? null : (latest.value - prior90.value) / Math.abs(prior90.value) * 100 : latest.value - prior90.value : null;
+    const points = metric.observations ? lastTenYearPoints([...metric.observations]) : config.years
       .filter((year) => year >= config.chartStartYear)
       .map((year) => {
         const index = config.years.findIndex((value) => value === year);
@@ -252,27 +263,32 @@ function macroScoreCards(locale: Locale, config: CommodityConfiguration) {
     const explanation = metric.explanation[locale];
     return { ...makeCard(locale, config.commodity, metric.id, metric.name[locale], value(current), trend(yoy, config.scoreRules.factors[metric.id].trendThreshold), impact, typeof explanation === "string" ? explanation : explanation[impact], {
         previousValue: value(previous),
-        yoyChange: changeValue,
+        yoyChange: formatChange(yoy),
         group: metric.tier === 1 ? "tier1" : "tier2",
-        chart: { points, unit: unitLabel, digits: metric.digits, label: t.lastTenYears, zeroBaseline: false },
-      }), factorScore: result.indicators[index].score };
+        chart: { points, unit: unitLabel, digits: metric.digits, label: metric.dataHealth?.kind === "sourced" ? t.sourcedHistory : t.lastTenYears, zeroBaseline: false },
+      }), factorScore: result.indicators[index].score, dataHealth: metric.dataHealth,
+      ninetyDayChange: metric.dataHealth?.kind === "sourced" ? formatChange(change90) : undefined };
   });
   const { score, status } = result;
-  const classification = score <= 25 ? t.severity.low : score <= 50 ? t.severity.moderate : score <= 75 ? t.severity.elevated : t.severity.high;
+  const classification = score === null ? t.unavailable : score <= 25 ? t.severity.low : score <= 50 ? t.severity.moderate : score <= 75 ? t.severity.elevated : t.severity.high;
   const driverLabel = (driver: (typeof result.indicators)[number]) => ({
     id: driver.id, name: config.indicators.find((indicator) => indicator.id === driver.id)!.name[locale],
-    contribution: driver.contribution, weight: driver.weight, score: driver.score,
+    contribution: driver.contribution, weight: driver.weight, score: driver.score!,
   });
+  const sourcedWeight = result.indicators.reduce((total, item, index) => total + (item.score !== null && config.indicators[index].dataHealth?.kind === "sourced" ? item.weight : 0), 0);
+  const sampleWeight = result.coverage - sourcedWeight;
   return {
     cards,
     summary: {
       score,
+      coverage: result.coverage,
+      dataMix: { sourcedWeight, sampleWeight, excludedWeight: 100 - result.coverage },
       status,
       statusLabel: impactLabel(status, locale),
       classification,
       note: t.macroScoreNote.replace("{count}", String(config.indicators.length)),
       weights: `${t.weightsLabel}: ${config.indicators.map((indicator) => `${indicator.name[locale]} ${number(config.weights[indicator.id], locale, 0)}%`).join(" · ")}`,
-      disclosure: config.disclosure[locale],
+      disclosure: config.scoreSources ? t.mixedDataDisclosure : config.disclosure[locale],
       positiveDrivers: result.positiveDrivers.map(driverLabel),
       negativeDrivers: result.negativeDrivers.map(driverLabel),
     },
@@ -306,18 +322,44 @@ function makeCard(
 }
 
 export async function getMacroIndicators(config: CommodityConfiguration, locale: Locale) {
-  const macro = macroScoreCards(locale, config);
+  const requestedSources = new Set(Object.values(config.scoreSources ?? {}));
+  const [dxy, realYields] = await Promise.all([
+    requestedSources.has("dxy") ? getMarketSeries("DX-Y.NYB", "1d", "10y") : Promise.resolve(null),
+    requestedSources.has("real-yields") ? getRealYieldSeries() : Promise.resolve(null),
+  ]);
+  const resolvedConfig = hydrateCommodityObservations(config, { dxy: dxy?.points ?? null, "real-yields": realYields?.points ?? null });
+  const macro = macroScoreCards(locale, resolvedConfig);
   const context = config.contextProvider
     ? await getContextIndicators(config.contextProvider, locale)
     : { cards: [], source: config.source[locale] };
+  const contextSources: Record<string, "dxy" | "real-yields"> = { "live-dxy": "dxy", "oil-dxy": "dxy", "live-real-rates": "real-yields" };
+  const contextCards = context.cards.filter((card) => !requestedSources.has(contextSources[card.id]));
   return {
-    cards: [...macro.cards, ...context.cards.map((card) => ({ ...card, group: "context" as const }))].map((card) => ({
+    cards: [...macro.cards, ...contextCards.map((card) => ({ ...card, group: "context" as const, dataHealth: contextDataHealth(card, config.commodity) }))].map((card) => ({
       ...card,
       commodityName: config.name[locale],
       priceCorrelation: config.priceRelationships?.[card.id],
     })),
     summary: macro.summary,
+    config: resolvedConfig,
     source: context.source,
+  };
+}
+
+function contextDataHealth(card: IndicatorCardData, commodity: string): IndicatorDataHealth {
+  const checkedAt = Date.now() / 1000;
+  if (card.id === "gold-seasonality") return { kind: "sample", status: "sample", source: "Monthly sample dataset", frequency: "monthly", observedAt: null, checkedAt };
+  if (card.id === "oil-curve") return { kind: "sourced", status: "unavailable", source: "unconfigured", frequency: "unknown", observedAt: null, checkedAt };
+  const realRates = card.id.includes("real-rates");
+  const inventory = card.id === "oil-inventory";
+  const frequency = inventory ? "weekly" : realRates || commodity === "oil" ? "daily" : "weekly";
+  const maxAgeDays = inventory ? 14 : frequency === "daily" ? 5 : 10;
+  const observedAt = card.chart?.points.at(-1)?.time ?? null;
+  return {
+    kind: "sourced", frequency, observedAt, checkedAt, maxAgeDays,
+    source: realRates ? "FRED / U.S. Treasury · DFII10" : inventory ? "EIA · WCESTUS1" : card.id === "stress-index" ? "Derived · Yahoo Finance / FRED" : "Yahoo Finance",
+    url: realRates ? "https://fred.stlouisfed.org/series/DFII10" : inventory ? "https://www.eia.gov/petroleum/supply/weekly/" : "https://finance.yahoo.com/",
+    status: observedAt === null ? "unavailable" : checkedAt - observedAt > maxAgeDays * 86400 ? "stale" : "fresh",
   };
 }
 

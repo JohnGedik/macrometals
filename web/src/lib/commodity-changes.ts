@@ -24,13 +24,15 @@ const periods: Record<ChangePeriod, { months: number; toleranceDays: number }> =
 
 export function commodityChangesInput(config: CommodityConfiguration): CommodityChangesInput {
   const historicalValues = Object.fromEntries(config.indicators.map((indicator) => [indicator.id,
-    config.years.map((year, index) => ({ time: Date.UTC(year, 6, 1) / 1000, value: indicator.values[index] })),
+    indicator.observations ?? config.years.map((year, index) => ({ time: Date.UTC(year, 6, 1) / 1000, value: indicator.values[index] })),
   ]));
   return {
     commodity: config.commodity,
     indicators: config.indicators.map((indicator) => ({ ...indicator, favorableDirection: config.scoreRules.factors[indicator.id].direction })),
     weights: config.weights,
-    currentValues: Object.fromEntries(config.indicators.map((indicator) => [indicator.id, historicalValues[indicator.id].at(-1)])),
+    currentValues: Object.fromEntries(config.indicators.map((indicator) => [indicator.id,
+      indicator.dataHealth?.kind === "sourced" && indicator.dataHealth.status !== "fresh" ? undefined : historicalValues[indicator.id].at(-1),
+    ])),
     historicalValues,
   };
 }
@@ -42,6 +44,14 @@ function monthsBefore(time: number, months: number) {
     date.getUTCHours(), date.getUTCMinutes(), date.getUTCSeconds()) / 1000;
 }
 
+export function comparisonObservation(current: ChangeObservation, history: readonly ChangeObservation[], period: ChangePeriod): ChangeObservation | null {
+  if (!Number.isFinite(current.time) || !Number.isFinite(new Date(current.time * 1000).getTime())) return null;
+  const target = monthsBefore(current.time, periods[period].months);
+  const previous = history.filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value) && point.time <= target)
+    .toSorted((first, second) => first.time - second.time).at(-1);
+  return previous && target - previous.time <= periods[period].toleranceDays * 86400 ? previous : null;
+}
+
 export function calculateCommodityChanges(input: CommodityChangesInput): IndicatorChange[] {
   return input.indicators.map((indicator) => {
     const current = input.currentValues[indicator.id];
@@ -51,9 +61,8 @@ export function calculateCommodityChanges(input: CommodityChangesInput): Indicat
     const changeFor = (period: ChangePeriod): number | null => {
       if (!current || !Number.isFinite(current.time) || !Number.isFinite(current.value)
         || !Number.isFinite(new Date(current.time * 1000).getTime())) return null;
-      const target = monthsBefore(current.time, periods[period].months);
-      const previous = history.findLast((point) => point.time <= target);
-      if (!previous || target - previous.time > periods[period].toleranceDays * 86400) return null;
+      const previous = comparisonObservation(current, history, period);
+      if (!previous) return null;
       const delta = current.value - previous.value;
       if (indicator.changeKind !== "percentage") return delta;
       if (previous.value === 0) return null;

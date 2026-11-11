@@ -2,10 +2,11 @@ import { Info } from "lucide-react";
 import { messages, type Locale } from "@/lib/i18n";
 import { countActiveIndicators, generateMacroSummary, type MacroSummaryInput, type MacroSummaryResult } from "@/lib/macro-summary";
 
-export function MacroSummaryCard({ input, locale, isSample = false, result }: {
+export function MacroSummaryCard({ input, locale, isSample = false, dataNote, result }: {
   input: MacroSummaryInput;
   locale: Locale;
   isSample?: boolean;
+  dataNote?: string;
   result?: MacroSummaryResult;
 }) {
   const t = messages[locale].macro;
@@ -37,7 +38,7 @@ export function MacroSummaryCard({ input, locale, isSample = false, result }: {
       </div>
       <p className="macro-summary-basis">{t.summaryActiveIndicators.replace("{count}", String(activeCount))}</p>
       <p className="macro-summary-text">{data.summary}</p>
-      {isSample && <p className="macro-summary-footer">{t.summarySampleNote}</p>}
+      {(dataNote || isSample) && <p className="macro-summary-footer">{dataNote ?? t.summarySampleNote}</p>}
     </section>
   );
 }

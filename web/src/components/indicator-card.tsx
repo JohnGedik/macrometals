@@ -3,6 +3,7 @@ import type { IndicatorCardData } from "@/lib/indicators";
 import { messages, type Locale } from "@/lib/i18n";
 import { IndicatorChart } from "@/components/indicator-chart";
 import { PriceRelationship } from "@/components/price-relationship";
+import { IndicatorDataHealth } from "@/components/indicator-data-health";
 
 const trendIcons = {
   up: ArrowUp,
@@ -43,10 +44,11 @@ export function IndicatorCard({ card, locale }: { card: IndicatorCardData; local
       <div className="indicator-card-top"><h3>{card.name}</h3></div>
       <span className="indicator-current-label">{t.current}</span>
       <div className="indicator-value">{card.value}</div>
-      {(card.previousValue || card.yoyChange) && (
+      {(card.previousValue || card.yoyChange || card.ninetyDayChange) && (
         <div className="indicator-period-values">
           {card.previousValue && <div><span>{t.previousValue}</span><strong>{card.previousValue}</strong></div>}
           {card.yoyChange && <div><span>{t.yearOverYear}</span><strong>{card.yoyChange}</strong></div>}
+          {card.ninetyDayChange && <div><span>{t.ninetyDayChange}</span><strong>{card.ninetyDayChange}</strong></div>}
         </div>
       )}
       {card.comparison && <div className="indicator-comparison"><span>{card.comparison.label}</span><strong>{card.comparison.value}</strong></div>}
@@ -59,6 +61,7 @@ export function IndicatorCard({ card, locale }: { card: IndicatorCardData; local
         </div>
       )}
       <IndicatorInterpretation text={card.explanation} />
+      {card.dataHealth && <IndicatorDataHealth health={card.dataHealth} locale={locale} excluded={card.group !== "context" && card.dataHealth.kind === "sourced" && card.factorScore == null} />}
       <PriceRelationship commodityName={card.commodityName} indicatorName={card.name} indicatorId={card.id} correlation={card.priceCorrelation} locale={locale} />
       {card.provenance && <p className="indicator-source">{card.provenance}</p>}
     </article>

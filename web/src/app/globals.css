@@ -593,6 +593,30 @@ textarea:focus-visible {
 .macro-driver-list small { font-size: 10px; font-weight: 400; }
 .macro-driver-empty { margin: 0; color: var(--muted); font-size: 12px; }
 
+.macro-score-coverage { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 9px 0 0; color: #d3dbd4; font-size: 10px; line-height: 1.6; font-variant-numeric: tabular-nums; }
+.macro-coverage-info { display: inline-flex; flex: 0 0 24px; align-items: center; justify-content: center; width: 24px; height: 24px; padding: 0; border: 0; background: transparent; color: inherit; cursor: help; }
+.macro-coverage-tooltip { position: absolute; z-index: 30; top: 100%; left: 0; width: min(360px, calc(100vw - 80px)); padding: 10px; border: 1px solid #617468; background: var(--forest); color: var(--paper-light); font-size: 11px; line-height: 1.5; visibility: hidden; opacity: 0; pointer-events: none; box-shadow: 0 3px 12px rgb(28 41 36 / 16%); }
+.macro-score-coverage:hover .macro-coverage-tooltip, .macro-score-coverage:focus-within .macro-coverage-tooltip { visibility: visible; opacity: 1; }
+.driver-insights { margin: 18px 0; border-bottom: 1px solid var(--line); }
+.driver-insights-tablist { display: flex; gap: 18px; border-bottom: 1px solid var(--line); }
+.driver-insights-tablist button { min-height: 36px; padding: 8px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 12px; cursor: pointer; }
+.driver-insights-tablist button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--green); font-weight: 700; }
+.driver-insights .macro-drivers { margin: 0; padding: 14px 0; border: 0; }
+.driver-insights .whats-changed-card { margin: 0; padding: 14px 0; border: 0; background: transparent; }
+.indicator-data-health { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.indicator-health-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px; }
+.indicator-health-heading h4 { margin: 0; color: var(--ink-soft); font-size: 11px; }
+.indicator-health-status { color: var(--muted); font-size: 9px; font-weight: 700; }
+.health-fresh .indicator-health-status { color: #39745e; }
+.health-stale .indicator-health-status { color: #ae6e26; }
+.health-unavailable .indicator-health-status { color: #b44938; }
+.indicator-data-health dl { display: grid; gap: 5px; margin: 7px 0 0; font-size: 10px; }
+.indicator-data-health dl > div { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; }
+.indicator-data-health dt { color: var(--muted); }
+.indicator-data-health dd { min-width: 0; margin: 0; color: var(--ink-soft); overflow-wrap: anywhere; }
+.indicator-data-health a { text-decoration: underline; text-underline-offset: 2px; }
+.indicator-health-note { margin: 7px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+
 .whats-changed-card { margin: 16px 0; padding: 16px; border: 1px solid var(--line); background: var(--paper-light); }
 .whats-changed-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
 .whats-changed-heading h3 { margin: 0; color: var(--ink-soft); font-size: 16px; }

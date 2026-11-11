@@ -39,7 +39,7 @@ export default async function TagPage({ params }: RouteProps) {
       {config && commodityData
         ? <CommodityHeader name={label} title={config.dashboardTitle[locale]} data={commodityData} labels={messages[locale].commodityHeader} locale={locale} />
         : <><h1>{label}</h1><p className="listing-intro">{t.description.replace("{topic}", label.toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-US"))}</p></>}
-      {indicators && config && <MacroIndicators cards={indicators.cards} source={indicators.source} config={config} locale={locale} macroScore={indicators.summary} />}
+      {indicators && config && <MacroIndicators cards={indicators.cards} source={indicators.source} config={indicators.config} locale={locale} macroScore={indicators.summary} />}
       {articles.length > 0 && <div className="article-grid">{articles.map((article, index) => <ArticleCard key={article.id} article={article} index={index + 1} locale={locale} />)}</div>}
     </section>
   );

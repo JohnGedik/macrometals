@@ -6,6 +6,8 @@ import type { CommodityConfiguration } from "@/lib/commodity-score";
 import { commodityChangesInput } from "@/lib/commodity-changes";
 import { WhatsChangedCard } from "@/components/whats-changed-card";
 import { MacroSummaryCard } from "@/components/macro-summary-card";
+import { DriverInsightsTabs } from "@/components/driver-insights-tabs";
+import { Info } from "lucide-react";
 
 export function MacroIndicators({
   cards,
@@ -30,29 +32,35 @@ export function MacroIndicators({
         <section className={`gold-macro-score impact-${macroScore.status}`} aria-labelledby="macro-score-title">
           <div className="gold-macro-score-heading">
             <div><p className="eyebrow">{macroScore.note}</p><h3 id="macro-score-title">{scoreTitle}</h3></div>
-            <div className="gold-macro-score-total"><strong>{macroScore.score}</strong><span>/100</span><span className={`impact-label impact-label-${macroScore.status}`}>{macroScore.statusLabel}</span><span className="indicator-classification">{macroScore.classification}</span></div>
+            <div className="gold-macro-score-total"><strong>{macroScore.score ?? t.unavailable}</strong>{macroScore.score !== null && <span>/100</span>}<span className={`impact-label impact-label-${macroScore.status}`}>{macroScore.statusLabel}</span><span className="indicator-classification">{macroScore.classification}</span></div>
           </div>
-          <div className="stress-track gold-macro-score-track" role="progressbar" aria-label={scoreTitle} aria-valuemin={0} aria-valuemax={100} aria-valuenow={macroScore.score}><span style={{ width: `${macroScore.score}%` }} /></div>
+          {macroScore.score !== null && <div className="stress-track gold-macro-score-track" role="progressbar" aria-label={scoreTitle} aria-valuemin={0} aria-valuemax={100} aria-valuenow={macroScore.score}><span style={{ width: `${macroScore.score}%` }} /></div>}
           <p className="gold-macro-weights">{macroScore.weights}</p>
+          <div className="macro-score-coverage">
+            <span>{t.scoreCoverageLabel}: {macroScore.coverage.toFixed(0)}% · {t.sourcedWeightLabel}: {macroScore.dataMix.sourcedWeight.toFixed(0)}% · {t.sampleWeightLabel}: {macroScore.dataMix.sampleWeight.toFixed(0)}% · {t.excludedWeightLabel}: {macroScore.dataMix.excludedWeight.toFixed(0)}%</span>
+            <button type="button" className="macro-coverage-info" aria-label={t.coverageDetails} aria-describedby={`${config.commodity}-coverage-tooltip`}><Info size={14} aria-hidden="true" /></button>
+            <span className="macro-coverage-tooltip" role="tooltip" id={`${config.commodity}-coverage-tooltip`}>{t.coverageExplanation}</span>
+          </div>
           <p className="gold-macro-disclosure">{macroScore.disclosure}</p>
         </section>
       )}
-      {macroScore && <MacroSummaryCard input={{
+      {macroScore && macroScore.score !== null && <MacroSummaryCard input={{
         commodity: config.commodity,
         commodityName: config.name[locale],
         score: macroScore.score,
         indicatorScores: config.indicators.map((indicator) => {
           const card = cards.find((candidate) => candidate.id === indicator.id)!;
-          return { id: indicator.id, name: indicator.name[locale], score: card.factorScore!, trend: card.trend };
+          return { id: indicator.id, name: indicator.name[locale], score: card.factorScore ?? NaN, trend: card.trend };
         }),
         indicatorWeights: config.weights,
         topPositiveDrivers: macroScore.positiveDrivers,
         topNegativeDrivers: macroScore.negativeDrivers,
         tone: config.summaryTone?.[locale],
         rules: config.scoreRules,
-      }} locale={locale} isSample />}
-      {macroScore && <WhatsChangedCard {...commodityChangesInput(config)} locale={locale} />}
-      {macroScore && <MacroDrivers summary={macroScore} locale={locale} />}
+      }} locale={locale} isSample={macroScore.dataMix.sampleWeight > 0} dataNote={config.scoreSources ? t.mixedSummaryNote : undefined} />}
+      {macroScore && <DriverInsightsTabs commodity={config.commodity} locale={locale}
+        scoreDrivers={<MacroDrivers summary={macroScore} locale={locale} />}
+        recentChanges={<WhatsChangedCard {...commodityChangesInput(config)} locale={locale} />} />}
       {macroScore ? (
         (["tier1", "tier2", "context"] as const).map((group) => {
           const groupedCards = cards.filter((card) => card.group === group);

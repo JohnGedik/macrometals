@@ -1,7 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { registerHooks } from "node:module";
-import { scoreCommodity } from "./commodity-score.ts";
 import { classifyPriceRelationship } from "./price-relationship.ts";
 import { calculateCommodityChanges, commodityChangesInput, rankCommodityChanges } from "./commodity-changes.ts";
 
@@ -13,9 +12,12 @@ const aliases = registerHooks({
     return nextResolve(specifier, context);
   },
 });
+const { scoreCommodity } = await import("./commodity-score.ts");
 const { commodityConfigurations, getCommodityConfiguration } = await import("./commodity-config.ts");
 const { getMacroIndicators, getCommodityHeaderData } = await import("./indicators.ts");
 const { countActiveIndicators, generateMacroSummary } = await import("./macro-summary.ts");
+const { hydrateCommodityObservations } = await import("./commodity-data.ts");
+const { normalizeDashboardPreference, readDashboardPreference, writeDashboardPreference } = await import("./dashboard-preferences.ts");
 aliases.deregister();
 
 function fixture(changes, weights = changes.map(() => 100 / changes.length)) {
@@ -26,6 +28,33 @@ function fixture(changes, weights = changes.map(() => 100 / changes.length)) {
     scoreRules: { baseline: 50, sensitivity: 50, bullish: 60, bearish: 40, factors: Object.fromEntries(indicators.map((indicator) => [indicator.id, { direction: 1, scale: 10, trendThreshold: 0.5 }])) },
   };
 }
+
+test("dashboard preferences validate stored values and use safe server defaults", () => {
+  assert.equal(normalizeDashboardPreference("driver-tab", "changes"), "changes");
+  assert.equal(normalizeDashboardPreference("driver-tab", "invalid"), "drivers");
+  assert.equal(normalizeDashboardPreference("change-period", "quarterly"), "quarterly");
+  assert.equal(normalizeDashboardPreference("change-period", null), "monthly");
+  assert.equal(normalizeDashboardPreference("change-period", "invalid"), "monthly");
+  assert.equal(readDashboardPreference("driver-tab"), "drivers");
+});
+
+test("dashboard selections still work in memory when browser storage is blocked", () => {
+  const originalWindow = globalThis.window;
+  const browser = new EventTarget();
+  browser.localStorage = { getItem() { throw new Error("Blocked"); }, setItem() { throw new Error("Blocked"); } };
+  globalThis.window = browser;
+  try {
+    writeDashboardPreference("driver-tab", "changes");
+    writeDashboardPreference("change-period", "quarterly");
+    assert.equal(readDashboardPreference("driver-tab"), "changes");
+    assert.equal(readDashboardPreference("change-period"), "quarterly");
+  } finally {
+    writeDashboardPreference("driver-tab", "drivers");
+    writeDashboardPreference("change-period", "monthly");
+    if (originalWindow === undefined) delete globalThis.window;
+    else globalThis.window = originalWindow;
+  }
+});
 
 test("neutral factors do not create positive or negative drivers", () => {
   const result = scoreCommodity(fixture([0, 0]));
@@ -77,6 +106,98 @@ test("preserve zero and negative prior-position behavior", () => {
   const result = scoreCommodity(config);
   assert.equal(result.indicators[0].change, 0);
   assert.equal(result.indicators[1].change, 10);
+});
+
+test("dated sourced factors compare actual YoY observations instead of adjacent daily values", () => {
+  const config = fixture([0]);
+  config.indicators[0].observations = [
+    { time: Date.parse("2024-06-03") / 1000, value: 100 },
+    { time: Date.parse("2025-06-02") / 1000, value: 109 },
+    { time: Date.parse("2025-06-03") / 1000, value: 110 },
+  ];
+  const result = scoreCommodity(config);
+  assert.equal(result.indicators[0].change, 10);
+  assert.equal(result.score, 100);
+  assert.equal(result.coverage, 100);
+});
+
+test("missing and stale sourced observations never fall back to seeded score values", () => {
+  const config = fixture([10, -10], [50, 50]);
+  config.indicators[0].observations = [];
+  const result = scoreCommodity(config);
+  assert.equal(result.indicators[0].score, null);
+  assert.equal(result.coverage, 50);
+  assert.equal(result.score, 0);
+  assert.equal(result.indicators[1].contribution, -50);
+  config.indicators[1].dataHealth = { kind: "sourced", status: "stale" };
+  assert.equal(scoreCommodity(config).score, null);
+  assert.equal(scoreCommodity(config).coverage, 0);
+});
+
+test("source health distinguishes fresh, stale, unavailable and sample observations", () => {
+  const now = Date.parse("2026-11-11T12:00:00Z") / 1000;
+  const points = [{ time: now - 86400, value: 100 }, { time: now - 366 * 86400, value: 110 }];
+  const fresh = hydrateCommodityObservations(commodityConfigurations.gold, { dxy: points, "real-yields": [] }, now);
+  assert.equal(fresh.indicators.find((item) => item.id === "dxy").dataHealth.status, "fresh");
+  assert.equal(fresh.indicators.find((item) => item.id === "real-rates").dataHealth.status, "unavailable");
+  assert.equal(fresh.indicators.find((item) => item.id === "etf-holdings").dataHealth.status, "sample");
+  assert.equal(scoreCommodity(fresh).coverage, 75);
+  const stale = hydrateCommodityObservations(commodityConfigurations.gold, { dxy: [points[1]] }, now);
+  assert.equal(stale.indicators.find((item) => item.id === "dxy").dataHealth.status, "stale");
+  assert.equal(scoreCommodity(stale).coverage, 55);
+  assert.deepEqual(calculateCommodityChanges(commodityChangesInput(stale)).find((item) => item.id === "dxy").changes, { monthly: null, quarterly: null, yoy: null });
+});
+
+test("FRED and DXY observations reach the score and change engine; FRED blanks are not zero yields", async () => {
+  const originalFetch = globalThis.fetch;
+  const day = new Date();
+  day.setUTCHours(0, 0, 0, 0);
+  day.setUTCDate(day.getUTCDate() - 1);
+  const previous = new Date(day);
+  previous.setUTCFullYear(previous.getUTCFullYear() - 1);
+  const asDate = (date) => date.toISOString().slice(0, 10);
+  globalThis.fetch = async (url) => String(url).includes("fredgraph")
+    ? new Response(`observation_date,DFII10\n${asDate(previous)},2\n${asDate(day)},1\n${asDate(new Date(day.getTime() + 86400000))},\n`)
+    : Response.json({ chart: { result: [{ timestamp: [previous.getTime() / 1000, day.getTime() / 1000], indicators: { quote: [{ close: [100, 95] }] } }] } });
+  try {
+    const dashboard = await getMacroIndicators({ ...commodityConfigurations.gold, contextProvider: undefined }, "en");
+    assert.equal(dashboard.cards.find((card) => card.id === "real-rates").value, "1.00%");
+    assert.equal(dashboard.cards.find((card) => card.id === "dxy").value, "95.0");
+    assert.equal(dashboard.summary.dataMix.sourcedWeight, 45);
+    assert.equal(dashboard.summary.coverage, 100);
+    const changes = calculateCommodityChanges(commodityChangesInput(dashboard.config));
+    assert.equal(changes.find((item) => item.id === "real-rates").changes.yoy, -1);
+    assert.equal(changes.find((item) => item.id === "dxy").changes.yoy, -5);
+    globalThis.fetch = async () => { throw new Error("Feed offline"); };
+    const offline = await getMacroIndicators({ ...commodityConfigurations.gold, contextProvider: undefined }, "en");
+    assert.equal(offline.cards.find((card) => card.id === "dxy").factorScore, null);
+    assert.equal(offline.cards.find((card) => card.id === "dxy").value, "—");
+    assert.equal(offline.summary.coverage, 55);
+    assert.equal(offline.summary.dataMix.sourcedWeight, 0);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("duplicate sourced context cards are removed and their 90-day comparisons retained", async () => {
+  const originalFetch = globalThis.fetch;
+  const day = new Date(Date.now() - 86400000);
+  day.setUTCHours(0, 0, 0, 0);
+  const prior90 = new Date(day.getTime() - 90 * 86400000);
+  const priorYear = new Date(day);
+  priorYear.setUTCFullYear(priorYear.getUTCFullYear() - 1);
+  const asDate = (date) => date.toISOString().slice(0, 10);
+  globalThis.fetch = async (url) => String(url).includes("fredgraph")
+    ? new Response(`observation_date,DFII10\n${asDate(priorYear)},1\n${asDate(prior90)},0\n${asDate(day)},2\n`)
+    : Response.json({ chart: { result: [{ timestamp: [priorYear.getTime() / 1000, prior90.getTime() / 1000, day.getTime() / 1000], indicators: { quote: [{ close: [110, 100, 95] }] } }] } });
+  try {
+    const expectedContexts = { gold: 4, silver: 2, copper: 2, oil: 4 };
+    for (const config of Object.values(commodityConfigurations)) {
+      const dashboard = await getMacroIndicators(config, "en");
+      assert.equal(dashboard.cards.filter((card) => card.group === "context").length, expectedContexts[config.commodity]);
+      assert.ok(dashboard.cards.every((card) => !["live-dxy", "live-real-rates", "oil-dxy"].includes(card.id)));
+      assert.equal(dashboard.cards.find((card) => card.id === "dxy").ninetyDayChange, "-5.0%");
+      if (config.commodity !== "oil") assert.equal(dashboard.cards.find((card) => card.id === "real-rates").ninetyDayChange, "+2.00 pp");
+    }
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 function changesFixture() {
@@ -244,7 +365,7 @@ test("all commodity narratives use actual score drivers without external calls",
   try {
     for (const config of Object.values(commodityConfigurations)) {
       for (const locale of ["en", "tr"]) {
-        const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined }, locale);
+        const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined, scoreSources: undefined }, locale);
         const input = {
           commodity: config.commodity, commodityName: config.name[locale], score: dashboard.summary.score,
           indicatorScores: dashboard.cards.map((card) => ({ id: card.id, name: card.name, score: card.factorScore, trend: card.trend })),
@@ -286,7 +407,7 @@ test("active indicators count valid weighted scores, including neutral and zero 
 
 test("each commodity summary is based on its eight active score indicators", async () => {
   for (const config of Object.values(commodityConfigurations)) {
-    const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined }, "en");
+    const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined, scoreSources: undefined }, "en");
     const input = {
       indicatorScores: dashboard.cards.map((card) => ({ id: card.id, name: card.name, score: card.factorScore, trend: card.trend })),
       indicatorWeights: config.weights,
@@ -322,7 +443,7 @@ test("unknown and invalid correlations are not presented as weak zero correlatio
 
 test("supplied Gold correlations propagate without leaking to other commodities", async () => {
   for (const config of Object.values(commodityConfigurations)) {
-    const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined }, "en");
+    const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined, scoreSources: undefined }, "en");
     for (const card of dashboard.cards) {
       assert.equal(card.commodityName, config.name.en);
       assert.equal(card.priceCorrelation, config.priceRelationships?.[card.id]);
@@ -341,7 +462,7 @@ test("an additional commodity uses only configuration, without a context fetch",
     dashboardTitle: { en: "Platinum Macro Indicators", tr: "Platin Makro Göstergeleri" },
     scoreTitle: { en: "Platinum Macro Score", tr: "Platin Makro Puanı" },
     disclosure: { en: "Test fixture only", tr: "Yalnızca test verisi" },
-    market: { symbol: "PL=F", unit: "oz" }, contextProvider: undefined,
+    market: { symbol: "PL=F", unit: "oz" }, contextProvider: undefined, scoreSources: undefined,
     indicators: scoring.indicators.map((indicator) => ({ ...commodityConfigurations.silver.indicators[0], ...indicator, name: { en: "Test demand", tr: "Test talebi" } })),
   };
   commodityConfigurations[config.commodity] = config;

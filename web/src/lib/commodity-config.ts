@@ -54,6 +54,7 @@ function configure(
 export const commodityConfigurations = {
   gold: configure({
     commodity: "gold", name: { en: "Gold", tr: "Altın" }, contextProvider: "gold",
+    scoreSources: { dxy: "dxy", "real-rates": "real-yields" },
     priceRelationships: { "etf-holdings": 0.81, dxy: -0.74, "real-rates": -0.65, "central-bank-purchases": 0.48, m2: 0.55 },
     summaryTone: { en: "Monetary conditions and investment demand frame this outlook.", tr: "Bu görünüm parasal koşullar ve yatırım talebi çerçevesinde değerlendirilir." },
     market: { symbol: "GC=F", unit: "oz" },
@@ -76,6 +77,7 @@ export const commodityConfigurations = {
   }),
   silver: configure({
     commodity: "silver", name: { en: "Silver", tr: "Gümüş" }, contextProvider: "silver",
+    scoreSources: { dxy: "dxy", "real-rates": "real-yields" },
     summaryTone: { en: "Industrial demand and monetary conditions both shape silver's backdrop.", tr: "Endüstriyel talep ve parasal koşullar gümüşün görünümünü birlikte şekillendirir." },
     market: { symbol: "SI=F", unit: "oz" },
     dashboardTitle: localized((locale) => messages[locale].macro.silverDashboardTitle),
@@ -90,6 +92,7 @@ export const commodityConfigurations = {
   }, silverMacroSeed),
   copper: configure({
     commodity: "copper", name: { en: "Copper", tr: "Bakır" }, contextProvider: "copper",
+    scoreSources: { dxy: "dxy", "real-rates": "real-yields" },
     summaryTone: { en: "Manufacturing, electrification and supply availability frame this outlook.", tr: "Bu görünüm imalat, elektrifikasyon ve arz koşulları çerçevesinde değerlendirilir." },
     market: { symbol: "HG=F", unit: "lb" },
     dashboardTitle: localized((locale) => messages[locale].macro.copperDashboardTitle),
@@ -104,6 +107,7 @@ export const commodityConfigurations = {
   }, copperMacroSeed),
   oil: configure({
     commodity: "oil", name: { en: "Oil", tr: "Petrol" }, contextProvider: "oil",
+    scoreSources: { dxy: "dxy" },
     summaryTone: { en: "Physical demand, supply and inventory balances frame oil's backdrop.", tr: "Fiziki talep, arz ve stok dengeleri petrolün görünümünü şekillendirir." },
     market: { symbol: "CL=F", unit: "bbl" },
     dashboardTitle: localized((locale) => messages[locale].macro.oilDashboardTitle),

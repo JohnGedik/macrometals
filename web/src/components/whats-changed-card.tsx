@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
 import { ArrowDown, ArrowUp, Info } from "lucide-react";
 import { messages, type Locale } from "@/lib/i18n";
 import { calculateCommodityChanges, rankCommodityChanges, type ChangePeriod, type CommodityChangesInput } from "@/lib/commodity-changes";
+import { useDashboardPreference } from "@/lib/dashboard-preferences";
 
 export function WhatsChangedCard({ locale, ...input }: CommodityChangesInput & { locale: Locale }) {
   const t = messages[locale].macro;
@@ -14,10 +14,11 @@ export function WhatsChangedCard({ locale, ...input }: CommodityChangesInput & {
     { period: "yoy", label: t.yearOverYear },
   ];
   const available = options.filter((option) => changes.some((indicator) => indicator.changes[option.period] !== null));
-  const [preferredPeriod, setPreferredPeriod] = useState<ChangePeriod>("monthly");
+  const [preferredPeriod, setPreferredPeriod] = useDashboardPreference("change-period");
   const period = available.some((option) => option.period === preferredPeriod) ? preferredPeriod
     : available.some((option) => option.period === "yoy") ? "yoy" : available[0]?.period ?? "yoy";
   const ranked = rankCommodityChanges(input, changes, period);
+  const comparisonCount = changes.filter((indicator) => indicator.changes[period] !== null).length;
   const format = new Intl.NumberFormat(locale === "tr" ? "tr-TR" : "en-US", {
     minimumFractionDigits: 1, maximumFractionDigits: 2, signDisplay: "always",
   });
@@ -34,7 +35,7 @@ export function WhatsChangedCard({ locale, ...input }: CommodityChangesInput & {
           })}
         </div>
       </div>
-      {available.length < options.length && <p className="whats-changed-note">{t.periodHistoryUnavailable}</p>}
+      <p className="whats-changed-note">{t.changeCoverage.replace("{count}", String(comparisonCount)).replace("{total}", String(input.indicators.length))}{comparisonCount < input.indicators.length && ` ${t.periodHistoryUnavailable}`}</p>
       <div className="whats-changed-columns">
         {([
           { key: "positive", title: t.positiveDevelopments, drivers: ranked.positive, empty: t.noPositiveContributors },
