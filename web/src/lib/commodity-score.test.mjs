@@ -15,7 +15,7 @@ const aliases = registerHooks({
 });
 const { commodityConfigurations, getCommodityConfiguration } = await import("./commodity-config.ts");
 const { getMacroIndicators, getCommodityHeaderData } = await import("./indicators.ts");
-const { generateMacroSummary } = await import("./macro-summary.ts");
+const { countActiveIndicators, generateMacroSummary } = await import("./macro-summary.ts");
 aliases.deregister();
 
 function fixture(changes, weights = changes.map(() => 100 / changes.length)) {
@@ -272,6 +272,27 @@ test("missing indicator scores do not inflate confidence", () => {
   const result = generateMacroSummary(input, "en");
   assert.equal(result.agreement, 40);
   assert.equal(result.confidence, "low");
+});
+
+test("active indicators count valid weighted scores, including neutral and zero scores", () => {
+  const input = summaryFixture(50, [0, 50, 100, NaN, 101, -1, 80, 90], [10, 10, 10, 10, 10, 10, 0, 0]);
+  input.indicatorScores.push({ ...input.indicatorScores[1] });
+  input.indicatorScores.push({ id: "missing-weight", name: "Missing weight", score: 90, trend: "up" });
+  const before = generateMacroSummary(input, "en");
+  assert.equal(countActiveIndicators(input), 3);
+  assert.deepEqual(generateMacroSummary(input, "en"), before);
+  assert.equal(countActiveIndicators({ indicatorScores: [], indicatorWeights: {} }), 0);
+});
+
+test("each commodity summary is based on its eight active score indicators", async () => {
+  for (const config of Object.values(commodityConfigurations)) {
+    const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined }, "en");
+    const input = {
+      indicatorScores: dashboard.cards.map((card) => ({ id: card.id, name: card.name, score: card.factorScore, trend: card.trend })),
+      indicatorWeights: config.weights,
+    };
+    assert.equal(countActiveIndicators(input), 8);
+  }
 });
 
 test("price relationship strength respects positive and negative boundaries", () => {

@@ -50,7 +50,7 @@ export function MacroIndicators({
         topNegativeDrivers: macroScore.negativeDrivers,
         tone: config.summaryTone?.[locale],
         rules: config.scoreRules,
-      }} locale={locale} updatedAt={String(config.years.at(-1))} isSample />}
+      }} locale={locale} isSample />}
       {macroScore && <WhatsChangedCard {...commodityChangesInput(config)} locale={locale} />}
       {macroScore && <MacroDrivers summary={macroScore} locale={locale} />}
       {macroScore ? (

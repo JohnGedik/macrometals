@@ -22,6 +22,14 @@ export type MacroSummaryResult = {
   negativeDrivers: string[];
 };
 
+export function countActiveIndicators(input: Pick<MacroSummaryInput, "indicatorScores" | "indicatorWeights">): number {
+  return new Set(input.indicatorScores.filter((indicator) => {
+    const weight = input.indicatorWeights[indicator.id];
+    return Number.isFinite(indicator.score) && indicator.score >= 0 && indicator.score <= 100
+      && Number.isFinite(weight) && weight > 0;
+  }).map((indicator) => indicator.id)).size;
+}
+
 export function generateMacroSummary(input: MacroSummaryInput, locale: Locale): MacroSummaryResult {
   if (!Number.isFinite(input.score) || input.score < 0 || input.score > 100) throw new Error("Invalid macro summary score");
   const t = messages[locale].macro;
