@@ -1,47 +1,85 @@
-import type { IndicatorCardData } from "@/lib/indicators";
+import type { MacroScoreSummary, IndicatorCardData } from "@/lib/indicators";
 import { messages, type Locale } from "@/lib/i18n";
 import { IndicatorCard } from "@/components/indicator-card";
+import { MacroDrivers } from "@/components/macro-drivers";
+import type { CommodityConfiguration } from "@/lib/commodity-score";
+import { commodityChangesInput } from "@/lib/commodity-changes";
+import { WhatsChangedCard } from "@/components/whats-changed-card";
+import { MacroSummaryCard } from "@/components/macro-summary-card";
 
 export function MacroIndicators({
   cards,
   source,
-  metal,
+  config,
   locale,
+  macroScore,
 }: {
   cards: IndicatorCardData[];
   source: string;
-  metal: "gold" | "silver" | "copper" | "oil";
+  config: CommodityConfiguration;
   locale: Locale;
+  macroScore?: MacroScoreSummary;
 }) {
   const t = messages[locale].macro;
+  const scoreTitle = config.scoreTitle[locale];
+  const methodology = config.methodology[locale];
 
   return (
-    <section className={`macro-indicators${metal === "gold" ? " macro-gold" : ""}`} aria-labelledby="macro-indicators-title">
-      <div className="macro-heading">
-        <div>
-          <p className="eyebrow">{locale === "tr" ? "Piyasa göstergeleri" : "Cross-asset dashboard"}</p>
-          <h2 id="macro-indicators-title">{metal === "gold" ? t.goldDashboardTitle : t.title}</h2>
-        </div>
-        <span className="macro-refresh">{metal === "oil" ? (locale === "tr" ? "Piyasa verisi 15 dakika, EIA verisi 6 saat önbelleklenir." : "Market data is cached for 15 minutes; EIA data for 6 hours.") : t.refresh}</span>
-      </div>
-      <div className="indicator-grid">
-        {cards.map((card) => <IndicatorCard key={card.id} card={card} locale={locale} />)}
-      </div>
+    <section className={`macro-indicators${macroScore ? " macro-gold" : ""}`} aria-labelledby="macro-indicators-title">
+      {macroScore && (
+        <section className={`gold-macro-score impact-${macroScore.status}`} aria-labelledby="macro-score-title">
+          <div className="gold-macro-score-heading">
+            <div><p className="eyebrow">{macroScore.note}</p><h3 id="macro-score-title">{scoreTitle}</h3></div>
+            <div className="gold-macro-score-total"><strong>{macroScore.score}</strong><span>/100</span><span className={`impact-label impact-label-${macroScore.status}`}>{macroScore.statusLabel}</span><span className="indicator-classification">{macroScore.classification}</span></div>
+          </div>
+          <div className="stress-track gold-macro-score-track" role="progressbar" aria-label={scoreTitle} aria-valuemin={0} aria-valuemax={100} aria-valuenow={macroScore.score}><span style={{ width: `${macroScore.score}%` }} /></div>
+          <p className="gold-macro-weights">{macroScore.weights}</p>
+          <p className="gold-macro-disclosure">{macroScore.disclosure}</p>
+        </section>
+      )}
+      {macroScore && <MacroSummaryCard input={{
+        commodity: config.commodity,
+        commodityName: config.name[locale],
+        score: macroScore.score,
+        indicatorScores: config.indicators.map((indicator) => {
+          const card = cards.find((candidate) => candidate.id === indicator.id)!;
+          return { id: indicator.id, name: indicator.name[locale], score: card.factorScore!, trend: card.trend };
+        }),
+        indicatorWeights: config.weights,
+        topPositiveDrivers: macroScore.positiveDrivers,
+        topNegativeDrivers: macroScore.negativeDrivers,
+        tone: config.summaryTone?.[locale],
+        rules: config.scoreRules,
+      }} locale={locale} updatedAt={String(config.years.at(-1))} isSample />}
+      {macroScore && <WhatsChangedCard {...commodityChangesInput(config)} locale={locale} />}
+      {macroScore && <MacroDrivers summary={macroScore} locale={locale} />}
+      {macroScore ? (
+        (["tier1", "tier2", "context"] as const).map((group) => {
+          const groupedCards = cards.filter((card) => card.group === group);
+          if (!groupedCards.length) return null;
+          const title = group === "tier1" ? t.goldTierOne : group === "tier2" ? t.goldTierTwo : t.goldCrossMarketContext;
+          return <section className="gold-indicator-group" key={group}><h3>{title}</h3><div className="indicator-grid">{groupedCards.map((card) => <IndicatorCard key={card.id} card={card} locale={locale} />)}</div></section>;
+        })
+      ) : (
+        <div className="indicator-grid">{cards.map((card) => <IndicatorCard key={card.id} card={card} locale={locale} />)}</div>
+      )}
       <p className="indicator-source">{source}</p>
+      <p className="macro-refresh">{config.refresh[locale]}</p>
       <details className="macro-methodology">
         <summary>{t.methodologyTitle}</summary>
         <div className="macro-methodology-content">
           <section>
-            <h3>{metal === "oil" ? (locale === "tr" ? "Petrol göstergeleri nasıl okunmalı?" : "How to read Oil indicators") : metal === "gold" ? t.goldMethodTitle : metal === "silver" ? t.silverMethodTitle : t.copperMethodTitle}</h3>
-            <p>{metal === "oil" ? (locale === "tr" ? "Vadeli fiyat momentumu, stok değişimi, dolar ve altın/petrol oranı piyasa koşullarına dair bağlam sağlar; tahmin değildir." : "Futures momentum, inventory changes, the dollar and the gold/oil ratio provide market context, not forecasts.") : metal === "gold" ? t.goldMethodology : metal === "silver" ? t.silverMethodology : t.copperMethodology}</p>
+            <h3>{methodology.title}</h3>
+            <p>{methodology.description}</p>
           </section>
           <section>
             <h3>{t.formulasTitle}</h3>
-            {metal === "oil" ? <p>{locale === "tr" ? "90 günlük değişim, son günlük kapanışı en az 90 gün önceki kapanışla karşılaştırır. Stok değişimi, SPR hariç haftalık ABD ham petrol stoklarının farkıdır; beş yıllık mevsimsel ortalama önceki beş yılın aynı tarihe en yakın haftalık değişimlerini kullanır. Altın/petrol oranı eşleşen günlük kapanışların beş yıllık aritmetik ortalamasıyla karşılaştırılır. Pozitif yakın vade eksi sonraki vade farkı backwardation, negatif fark contango gösterir." : "The 90-day change compares the latest daily close with the closest close at least 90 days earlier. Inventory change is the weekly difference in U.S. crude stocks excluding SPR; its five-year seasonal average uses the nearest weekly change to the same date in each of the previous five years. Gold/oil is compared with the five-year arithmetic mean of matched daily closes. A positive near-minus-later contract spread indicates backwardation; a negative spread indicates contango."}</p> : <><p>{metal === "copper" ? t.copperRatioFormula : t.ratioFormula}</p><p>{metal === "copper" ? t.copperTrendFormula : t.trendFormula}</p>{metal !== "copper" && <p>{t.stressFormula}</p>}</>}
+            <p>{t.macroScoreFormula.replace("{baseline}", String(config.scoreRules.baseline)).replace("{sensitivity}", String(config.scoreRules.sensitivity))}</p>
+            {methodology.formulas.map((formula) => <p key={formula}>{formula}</p>)}
           </section>
           <section>
             <h3>{t.sourcesTitle}</h3>
-            <p>{metal === "oil" ? (locale === "tr" ? "Yahoo Finance: CL=F ve BZ=F (WTI ve Brent vadeli işlemleri), GC=F (altın vadeli işlemleri), DX-Y.NYB (DXY). EIA WCESTUS1: SPR hariç ABD ham petrol stokları. EIA API anahtarı gerekir. EIA'nın vadeli kontrat serisi 2024'te sonlandığından fark için güncel kaynak henüz yok." : "Yahoo Finance: CL=F and BZ=F (WTI and Brent futures), GC=F (gold futures), DX-Y.NYB (DXY). EIA WCESTUS1: U.S. crude stocks excluding SPR. An EIA API key is required. EIA's futures contract series ended in 2024, so a current spread source is not yet available.") : metal === "copper" ? t.copperDataSources : t.dataSources}</p>
+            <p>{methodology.sources}</p>
           </section>
           <section>
             <h3>{t.disclaimerTitle}</h3>

@@ -6,13 +6,13 @@ import type { Locale } from "@/lib/i18n";
 
 export function CommodityHeader({
   name,
-  description,
+  title,
   data,
   labels,
   locale,
 }: {
   name: string;
-  description: string;
+  title: string;
   data: CommodityHeaderData;
   labels: {
     currentPrice: string;
@@ -45,10 +45,9 @@ export function CommodityHeader({
 
   return (
     <section className="commodity-header" aria-label={`${name} market summary`}>
+      <h1 id="macro-indicators-title">{title}</h1>
       <div className="commodity-header-overview">
         <p className="eyebrow">{labels.currentPrice}</p>
-        <h1>{name}</h1>
-        <p className="listing-intro">{description}</p>
         <strong className="commodity-current-price">{formatPrice(data.price)}</strong>
         <dl className="commodity-metrics">
           <div className={data.dailyChange === null ? "" : data.dailyChange >= 0 ? "metric-positive" : "metric-negative"}>

@@ -2,6 +2,7 @@ import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import type { IndicatorCardData } from "@/lib/indicators";
 import { messages, type Locale } from "@/lib/i18n";
 import { IndicatorChart } from "@/components/indicator-chart";
+import { PriceRelationship } from "@/components/price-relationship";
 
 const trendIcons = {
   up: ArrowUp,
@@ -42,6 +43,12 @@ export function IndicatorCard({ card, locale }: { card: IndicatorCardData; local
       <div className="indicator-card-top"><h3>{card.name}</h3></div>
       <span className="indicator-current-label">{t.current}</span>
       <div className="indicator-value">{card.value}</div>
+      {(card.previousValue || card.yoyChange) && (
+        <div className="indicator-period-values">
+          {card.previousValue && <div><span>{t.previousValue}</span><strong>{card.previousValue}</strong></div>}
+          {card.yoyChange && <div><span>{t.yearOverYear}</span><strong>{card.yoyChange}</strong></div>}
+        </div>
+      )}
       {card.comparison && <div className="indicator-comparison"><span>{card.comparison.label}</span><strong>{card.comparison.value}</strong></div>}
       <IndicatorStatus impact={card.impact} impactLabel={card.impactLabel} trend={card.trend} trendLabel={card.trendLabel} subject={card.subject} severity={card.severity} />
       {card.chart && <IndicatorChart name={card.name} points={card.chart.points} locale={locale} unit={card.chart.unit} digits={card.chart.digits} axisDigits={card.chart.axisDigits} lastYearLabel={t.lastYear} chartLabel={card.chart.label} zeroBaseline={card.chart.zeroBaseline} />}
@@ -52,6 +59,7 @@ export function IndicatorCard({ card, locale }: { card: IndicatorCardData; local
         </div>
       )}
       <IndicatorInterpretation text={card.explanation} />
+      <PriceRelationship commodityName={card.commodityName} indicatorName={card.name} indicatorId={card.id} correlation={card.priceCorrelation} locale={locale} />
       {card.provenance && <p className="indicator-source">{card.provenance}</p>}
     </article>
   );

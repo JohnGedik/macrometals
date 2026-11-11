@@ -1,5 +1,9 @@
 import { messages, type Locale } from "@/lib/i18n";
 import { getOilInventory } from "@/lib/oil-inventory";
+import { getCommodityConfiguration } from "@/lib/commodity-config";
+import { scoreCommodity, type CommodityConfiguration } from "@/lib/commodity-score";
+
+export type { CommodityKey } from "@/lib/commodity-config";
 
 type Point = { time: number; value: number };
 export type IndicatorChartPoint = Point & { label?: string };
@@ -17,14 +21,31 @@ export type IndicatorCardData = {
   impactLabel: string;
   subject: string;
   explanation: string;
+  group?: "tier1" | "tier2" | "context";
+  previousValue?: string;
+  yoyChange?: string;
   comparison?: { label: string; value: string };
   score?: number;
+  factorScore?: number;
+  commodityName?: string;
+  priceCorrelation?: number;
   severity?: string;
   provenance?: string;
   chart?: { points: IndicatorChartPoint[]; unit: string; digits: number; axisDigits?: number; label: string; zeroBaseline: boolean };
 };
 
-export type CommodityKey = "gold" | "silver" | "oil" | "copper";
+export type MacroScoreSummary = {
+  score: number;
+  status: Exclude<Impact, "unavailable">;
+  statusLabel: string;
+  classification: string;
+  note: string;
+  weights: string;
+  disclosure: string;
+  positiveDrivers: { id: string; name: string; contribution: number; weight: number; score: number }[];
+  negativeDrivers: { id: string; name: string; contribution: number; weight: number; score: number }[];
+};
+
 export type CommodityHeaderData = {
   price: number | null;
   dailyChange: number | null;
@@ -156,6 +177,18 @@ function lastYearPoints(points: Point[], endTime = points.at(-1)?.time ?? 0): In
   return points.filter((point) => point.time >= endTime - 365 * 86400 && point.time <= endTime);
 }
 
+function lastTenYearPoints(points: Point[], endTime = points.at(-1)?.time ?? 0): IndicatorChartPoint[] {
+  return points.filter((point) => point.time >= endTime - 3652 * 86400 && point.time <= endTime);
+}
+
+function yearComparison(points: Point[]) {
+  const latest = points.at(-1);
+  if (!latest) return null;
+  const previous = valueAt(points, latest.time - 365 * 86400);
+  if (previous === null || previous === 0) return null;
+  return { previous, change: ((latest.value - previous) / Math.abs(previous)) * 100 };
+}
+
 function mean(points: Point[]) {
   if (!points.length) return null;
   return points.reduce((total, point) => total + point.value, 0) / points.length;
@@ -202,16 +235,60 @@ function trendLabel(direction: Trend, locale: Locale) {
   return messages[locale].macro.trend[direction];
 }
 
+function macroScoreCards(locale: Locale, config: CommodityConfiguration) {
+  const t = messages[locale].macro;
+  const result = scoreCommodity(config);
+  const cards = config.indicators.map((metric, index) => {
+    const { current, previous, change: yoy, status: impact } = result.indicators[index];
+    const unitLabel = metric.unit[locale];
+    const value = (amount: number) => `${metric.prefix}${number(amount, locale, metric.digits)}${unitLabel}`;
+    const changeValue = `${yoy > 0 ? "+" : ""}${number(yoy, locale, metric.changeKind === "points" ? 2 : 1)}${metric.changeKind === "points" ? (locale === "tr" ? " yüzde puan" : " pp") : metric.changeKind === "index-points" ? (locale === "tr" ? " endeks puanı" : " index points") : "%"}`;
+    const points = config.years
+      .filter((year) => year >= config.chartStartYear)
+      .map((year) => {
+        const index = config.years.findIndex((value) => value === year);
+        return { time: Date.UTC(year, 6, 1) / 1000, value: metric.values[index], label: String(year) };
+      });
+    const explanation = metric.explanation[locale];
+    return { ...makeCard(locale, config.commodity, metric.id, metric.name[locale], value(current), trend(yoy, config.scoreRules.factors[metric.id].trendThreshold), impact, typeof explanation === "string" ? explanation : explanation[impact], {
+        previousValue: value(previous),
+        yoyChange: changeValue,
+        group: metric.tier === 1 ? "tier1" : "tier2",
+        chart: { points, unit: unitLabel, digits: metric.digits, label: t.lastTenYears, zeroBaseline: false },
+      }), factorScore: result.indicators[index].score };
+  });
+  const { score, status } = result;
+  const classification = score <= 25 ? t.severity.low : score <= 50 ? t.severity.moderate : score <= 75 ? t.severity.elevated : t.severity.high;
+  const driverLabel = (driver: (typeof result.indicators)[number]) => ({
+    id: driver.id, name: config.indicators.find((indicator) => indicator.id === driver.id)!.name[locale],
+    contribution: driver.contribution, weight: driver.weight, score: driver.score,
+  });
+  return {
+    cards,
+    summary: {
+      score,
+      status,
+      statusLabel: impactLabel(status, locale),
+      classification,
+      note: t.macroScoreNote.replace("{count}", String(config.indicators.length)),
+      weights: `${t.weightsLabel}: ${config.indicators.map((indicator) => `${indicator.name[locale]} ${number(config.weights[indicator.id], locale, 0)}%`).join(" · ")}`,
+      disclosure: config.disclosure[locale],
+      positiveDrivers: result.positiveDrivers.map(driverLabel),
+      negativeDrivers: result.negativeDrivers.map(driverLabel),
+    },
+  };
+}
+
 function makeCard(
   locale: Locale,
-  subject: "gold" | "silver" | "copper" | "oil",
+  subject: string,
   id: string,
   name: string,
   value: string,
   direction: Trend,
   impact: Impact,
   explanation: string,
-  extra?: Pick<IndicatorCardData, "comparison" | "score" | "severity" | "provenance" | "chart">,
+  extra?: Pick<IndicatorCardData, "previousValue" | "yoyChange" | "group" | "comparison" | "score" | "severity" | "provenance" | "chart">,
 ): IndicatorCardData {
   const t = messages[locale].macro;
   return {
@@ -222,21 +299,38 @@ function makeCard(
     trendLabel: trendLabel(direction, locale),
     impact,
     impactLabel: impactLabel(impact, locale),
-    subject: subject === "gold" ? t.onGold : subject === "silver" ? t.onSilver : subject === "copper" ? t.onCopper : locale === "tr" ? "Petrol üzerindeki etkisi" : "on Oil",
+    subject: t.onCommodity.replace("{commodity}", getCommodityConfiguration(subject)?.name[locale] ?? subject),
     explanation,
     ...extra,
   };
 }
 
-export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "oil", locale: Locale) {
+export async function getMacroIndicators(config: CommodityConfiguration, locale: Locale) {
+  const macro = macroScoreCards(locale, config);
+  const context = config.contextProvider
+    ? await getContextIndicators(config.contextProvider, locale)
+    : { cards: [], source: config.source[locale] };
+  return {
+    cards: [...macro.cards, ...context.cards.map((card) => ({ ...card, group: "context" as const }))].map((card) => ({
+      ...card,
+      commodityName: config.name[locale],
+      priceCorrelation: config.priceRelationships?.[card.id],
+    })),
+    summary: macro.summary,
+    source: context.source,
+  };
+}
+
+async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil", locale: Locale) {
   const t = messages[locale].macro;
   if (metal === "oil") return getOilIndicators(locale);
+  const historyRange = metal === "gold" ? "10y" : "5y";
   const [dollar, gold, silver, oil, sp500, realYields, copper] = await Promise.all([
-    getMarketSeries("DX-Y.NYB"),
-    getMarketSeries("GC=F"),
-    metal === "copper" ? Promise.resolve(null) : getMarketSeries("SI=F"),
-    metal === "copper" ? Promise.resolve(null) : getMarketSeries("CL=F"),
-    metal === "copper" ? Promise.resolve(null) : getMarketSeries("^GSPC"),
+    getMarketSeries("DX-Y.NYB", "1wk", historyRange),
+    getMarketSeries("GC=F", "1wk", historyRange),
+    metal === "copper" ? Promise.resolve(null) : getMarketSeries("SI=F", "1wk", historyRange),
+    metal === "copper" ? Promise.resolve(null) : getMarketSeries("CL=F", "1wk", historyRange),
+    metal === "copper" ? Promise.resolve(null) : getMarketSeries("^GSPC", "1wk", historyRange),
     getRealYieldSeries(),
     metal === "copper" ? getMarketSeries("HG=F") : Promise.resolve(null),
   ]);
@@ -258,10 +352,11 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
 
     return {
       cards: [
-        makeCard(locale, metal, "copper-price", t.names.copperPrice, copper ? `$${number(copper.current, locale)}/lb` : "—", trend(copperChange, 1), copperImpact, t.explanations.copperPrice[copperImpact], { chart: { points: lastYearPoints(copper?.points ?? []), unit: " USD/lb", digits: 3, label: chartLabel, zeroBaseline: false } }),
-        makeCard(locale, metal, "real-rates", t.names.realRates, realYields ? `${number(realYields.current, locale)}%` : "—", trend(realYieldChange, 0.1), realYieldImpact, t.explanations.copperRates[realYieldImpact], { chart: { points: lastYearPoints(realYields?.points ?? []), unit: "%", digits: 2, axisDigits: 1, label: chartLabel, zeroBaseline: false } }),
-        makeCard(locale, metal, "dxy", t.names.dxy, dollar ? number(dollar.current, locale) : "—", trend(dollarChange, 0.75), dollarImpact, t.explanations.copperDxy[dollarImpact], { chart: { points: lastYearPoints(dollar?.points ?? []), unit: "", digits: 0, label: chartLabel, zeroBaseline: false } }),
+        makeCard(locale, metal, "copper-price", t.names.copperPrice, copper ? `$${number(copper.current, locale)}/lb` : "—", trend(copperChange, 1), copperImpact, t.explanations.copperPrice[copperImpact], { group: "context", chart: { points: lastYearPoints(copper?.points ?? []), unit: " USD/lb", digits: 3, label: chartLabel, zeroBaseline: false } }),
+        makeCard(locale, metal, "live-real-rates", t.names.realRates, realYields ? `${number(realYields.current, locale)}%` : "—", trend(realYieldChange, 0.1), realYieldImpact, t.explanations.copperRates[realYieldImpact], { group: "context", chart: { points: lastYearPoints(realYields?.points ?? []), unit: "%", digits: 2, axisDigits: 1, label: chartLabel, zeroBaseline: false } }),
+        makeCard(locale, metal, "live-dxy", t.names.dxy, dollar ? number(dollar.current, locale) : "—", trend(dollarChange, 0.75), dollarImpact, t.explanations.copperDxy[dollarImpact], { group: "context", chart: { points: lastYearPoints(dollar?.points ?? []), unit: "", digits: 0, label: chartLabel, zeroBaseline: false } }),
         makeCard(locale, metal, "copper-gold", t.names.copperGold, copperGoldCurrent === null ? "—" : number(copperGoldCurrent, locale, 5), trend(percentageChange(copperHistory), 1), relativeImpact, t.explanations.copperGold[relativeImpact], {
+          group: "context",
           comparison: { label: t.fiveYearAverage, value: copperGoldAverage === null ? "—" : number(copperGoldAverage, locale, 5) },
           chart: { points: lastYearPoints(copperHistory), unit: "", digits: 5, label: chartLabel, zeroBaseline: false },
         }),
@@ -308,9 +403,9 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
   const goldChart = lastYearPoints(gold?.points ?? []);
   const dollarChart = lastYearPoints(dollar?.points ?? []);
   const realRateChart = lastYearPoints(realYields?.points ?? []);
-  const goldSpChart = lastYearPoints(goldSpHistory);
-  const goldOilChart = lastYearPoints(goldOilHistory);
-  const goldSilverChart = lastYearPoints(goldSilverHistory);
+  const goldSpChart = metal === "gold" ? lastTenYearPoints(goldSpHistory) : lastYearPoints(goldSpHistory);
+  const goldOilChart = metal === "gold" ? lastTenYearPoints(goldOilHistory) : lastYearPoints(goldOilHistory);
+  const goldSilverChart = metal === "gold" ? lastTenYearPoints(goldSilverHistory) : lastYearPoints(goldSilverHistory);
   const stressChart: IndicatorChartPoint[] = goldChart.flatMap(({ time }) => {
     const currentGold = valueAt(gold?.points ?? [], time);
     const earlierGold = valueAt(gold?.points ?? [], time - 90 * 86400);
@@ -356,15 +451,19 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
 
   if (metal === "silver") {
     const silverImpact = ratioImpact(goldSilverCurrent, goldSilverAverage, true);
+    const ratioYear = yearComparison(goldSilverHistory);
     return {
       cards: [
-        realRateCard,
-        dxyCard,
         makeCard(locale, direction, "gold-silver", t.names.goldSilver, goldSilverCurrent === null ? "—" : number(goldSilverCurrent, locale), trend(percentageChange(goldSilverHistory), 1), silverImpact, t.explanations.goldSilver["silver"][silverImpact], {
+          group: "context",
+          previousValue: ratioYear ? number(ratioYear.previous, locale) : "—",
+          yoyChange: ratioYear ? `${ratioYear.change > 0 ? "+" : ""}${number(ratioYear.change, locale, 1)}%` : "—",
           comparison: { label: t.historicalAverage, value: goldSilverAverage === null ? "—" : number(goldSilverAverage, locale) },
           chart: { points: goldSilverChart, unit: "", digits: 0, label: chartLabel, zeroBaseline: false },
         }),
-        stressCard,
+        { ...realRateCard, id: "live-real-rates", group: "context" as const },
+        { ...dxyCard, id: "live-dxy", group: "context" as const },
+        { ...stressCard, group: "context" as const },
       ],
       source: t.source,
     };
@@ -383,24 +482,39 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
   const seasonalityMonths = seasonalReturns.map((_, month) =>
     monthFormatter.format(new Date(Date.UTC(2020, month, 1))),
   );
+  const goldSpYear = yearComparison(goldSpHistory);
+  const goldOilYear = yearComparison(goldOilHistory);
+  const goldSilverYear = yearComparison(goldSilverHistory);
+  const seasonalPrevious = t.notApplicable;
+  const seasonalChange = t.notApplicable;
 
   return {
     cards: [
-      realRateCard,
-      dxyCard,
-      makeCard(locale, direction, "gold-sp", t.names.goldSp, goldSpCurrent === null ? "—" : number(goldSpCurrent, locale, 3), trend(percentageChange(goldSpHistory), 1), goldSpImpact, t.explanations.goldSp[goldSpImpact], {
+      makeCard(locale, direction, "gold-sp", t.names.goldSp, goldSpCurrent === null ? "—" : number(goldSpCurrent, locale, 3), trend(goldSpYear?.change ?? null, 1), goldSpImpact, t.explanations.goldSp[goldSpImpact], {
+        group: "context",
+        previousValue: goldSpYear ? number(goldSpYear.previous, locale, 3) : "—",
+        yoyChange: goldSpYear ? `${goldSpYear.change > 0 ? "+" : ""}${number(goldSpYear.change, locale, 1)}%` : "—",
         comparison: { label: t.fiveYearAverage, value: goldSpAverage === null ? "—" : number(goldSpAverage, locale, 3) },
         chart: { points: goldSpChart, unit: "", digits: 3, label: chartLabel, zeroBaseline: false },
       }),
-      makeCard(locale, direction, "gold-oil", t.names.goldOil, goldOilCurrent === null ? "—" : number(goldOilCurrent, locale, 2), trend(percentageChange(goldOilHistory), 1), goldOilImpact, t.explanations.goldOil[goldOilImpact], {
+      makeCard(locale, direction, "gold-oil", t.names.goldOil, goldOilCurrent === null ? "—" : number(goldOilCurrent, locale, 2), trend(goldOilYear?.change ?? null, 1), goldOilImpact, t.explanations.goldOil[goldOilImpact], {
+        group: "context",
+        previousValue: goldOilYear ? number(goldOilYear.previous, locale, 2) : "—",
+        yoyChange: goldOilYear ? `${goldOilYear.change > 0 ? "+" : ""}${number(goldOilYear.change, locale, 1)}%` : "—",
         comparison: { label: t.fiveYearAverage, value: goldOilAverage === null ? "—" : number(goldOilAverage, locale, 2) },
         chart: { points: goldOilChart, unit: "", digits: 0, label: chartLabel, zeroBaseline: false },
       }),
-      makeCard(locale, direction, "gold-silver", t.names.goldSilver, goldSilverCurrent === null ? "—" : number(goldSilverCurrent, locale, 2), trend(percentageChange(goldSilverHistory), 1), goldSilverImpact, t.explanations.goldSilver["gold"][goldSilverImpact], {
+      makeCard(locale, direction, "gold-silver", t.names.goldSilver, goldSilverCurrent === null ? "—" : number(goldSilverCurrent, locale, 2), trend(goldSilverYear?.change ?? null, 1), goldSilverImpact, t.explanations.goldSilver["gold"][goldSilverImpact], {
+        group: "context",
+        previousValue: goldSilverYear ? number(goldSilverYear.previous, locale, 2) : "—",
+        yoyChange: goldSilverYear ? `${goldSilverYear.change > 0 ? "+" : ""}${number(goldSilverYear.change, locale, 1)}%` : "—",
         comparison: { label: t.historicalAverage, value: goldSilverAverage === null ? "—" : number(goldSilverAverage, locale, 2) },
         chart: { points: goldSilverChart, unit: "", digits: 0, label: chartLabel, zeroBaseline: false },
       }),
       makeCard(locale, direction, "gold-seasonality", t.names.goldSeasonality, `${seasonalityMonths[currentMonth]} ${currentSeasonality > 0 ? "+" : ""}${number(currentSeasonality, locale, 1)}%`, trend(currentSeasonality - seasonalReturns[(currentMonth + 11) % 12], 0.05), currentSeasonalityImpact, t.explanations.goldSeasonality, {
+        group: "context",
+        previousValue: seasonalPrevious,
+        yoyChange: seasonalChange,
         severity: currentSeasonality < 0 ? t.severity.low : currentSeasonality < 0.5 ? t.seasonalityLevel.neutral : currentSeasonality <= 1 ? t.severity.elevated : t.severity.high,
         chart: {
           points: seasonalityMonths.map((month, index) => ({
@@ -414,7 +528,6 @@ export async function getMacroIndicators(metal: "gold" | "silver" | "copper" | "
           zeroBaseline: true,
         },
       }),
-      stressCard,
     ],
     source: t.source,
   };
@@ -493,15 +606,8 @@ async function getOilIndicators(locale: Locale) {
   };
 }
 
-const commoditySpecs: Record<CommodityKey, { symbol: string; unit: string }> = {
-  gold: { symbol: "GC=F", unit: "oz" },
-  silver: { symbol: "SI=F", unit: "oz" },
-  oil: { symbol: "CL=F", unit: "bbl" },
-  copper: { symbol: "HG=F", unit: "lb" },
-};
-
-export async function getCommodityHeaderData(commodity: CommodityKey): Promise<CommodityHeaderData> {
-  const spec = commoditySpecs[commodity];
+export async function getCommodityHeaderData(config: CommodityConfiguration): Promise<CommodityHeaderData> {
+  const spec = config.market;
   const series = await getMarketSeries(spec.symbol, "1d", "1y");
   if (!series) return { price: null, dailyChange: null, oneYearReturn: null, high52Week: null, low52Week: null, observedAt: null, unit: spec.unit, points: [] };
 

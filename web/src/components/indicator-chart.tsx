@@ -30,15 +30,28 @@ export function IndicatorChart({
   const axisNumberFormat = new Intl.NumberFormat(localeCode, { maximumFractionDigits: axisDigits ?? digits });
   const dateFormat = new Intl.DateTimeFormat(localeCode, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   const monthYearFormat = new Intl.DateTimeFormat(localeCode, { month: "short", year: "2-digit", timeZone: "UTC" });
-  const quarterlyTicks = points.reduce<number[]>((ticks, point) => {
-    const date = new Date(point.time * 1000);
-    const month = date.getUTCMonth();
-    if (month % 3 === 0 && !ticks.some((tick) => new Date(tick * 1000).getUTCMonth() === month && new Date(tick * 1000).getUTCFullYear() === date.getUTCFullYear())) {
-      ticks.push(point.time);
-    }
+  const annualSeries = points.length > 0 && points.every((point) => point.label && /^\d{4}$/.test(point.label));
+  const multiYearSeries = points.length > 1 && points.at(-1)!.time - points[0].time > 2.5 * 365 * 86400;
+  const yearlyTicks = points.reduce<number[]>((ticks, point) => {
+    const year = new Date(point.time * 1000).getUTCFullYear();
+    if (!ticks.some((time) => new Date(time * 1000).getUTCFullYear() === year)) ticks.push(point.time);
     return ticks;
-  }, []);
+  }, []).filter((_, index) => index % 2 === 0);
+  const quarterlyTicks = annualSeries
+    ? points.filter((_, index) => index % 2 === 0).map((point) => point.time)
+    : multiYearSeries
+      ? yearlyTicks
+      : points.reduce<number[]>((ticks, point) => {
+          const date = new Date(point.time * 1000);
+          const month = date.getUTCMonth();
+          if (month % 3 === 0 && !ticks.some((tick) => new Date(tick * 1000).getUTCMonth() === month && new Date(tick * 1000).getUTCFullYear() === date.getUTCFullYear())) {
+            ticks.push(point.time);
+          }
+          return ticks;
+        }, []);
   const formatMonthYear = (time: number) => {
+    if (annualSeries) return points.find((point) => point.time === time)?.label ?? "";
+    if (multiYearSeries) return String(new Date(time * 1000).getUTCFullYear());
     const parts = monthYearFormat.formatToParts(new Date(time * 1000));
     return `${parts.find((part) => part.type === "month")?.value ?? ""}-${parts.find((part) => part.type === "year")?.value ?? ""}`;
   };

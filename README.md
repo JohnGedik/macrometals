@@ -46,6 +46,42 @@ Members can publish Markdown articles from `/write`. Drafts are private to their
 
 ## Macro indicator methodology
 
+### Commodity configuration and Macro Scores
+
+All commodity dashboards use the registry in [`web/src/lib/commodity-config.ts`](web/src/lib/commodity-config.ts), the pure score engine in [`web/src/lib/commodity-score.ts`](web/src/lib/commodity-score.ts), and the same `/tag/[tag]` route and renderer. The existing annual histories are illustrative samples, not verified or live market data. Fetched market/EIA context remains separate from the Macro Score.
+
+A `CommodityConfiguration` contains:
+
+- `commodity`: a URL slug, such as `natural-gas`.
+- `indicators`: localized names, interpretations, unit suffixes/prefixes, tier, display precision, change kind, and values aligned to `years`.
+- `weights`: indicator ID to percentage weight; weights must total 100.
+- `scoreRules`: neutral baseline, sensitivity, bullish/bearish thresholds, and per-indicator favorable direction, positive scale, and trend threshold.
+- `market`: a Yahoo Finance symbol and display unit for the shared price header. Failed feeds remain unavailable.
+- Localized name, dashboard/score titles, disclosure, source, refresh policy, and methodology.
+- Optional `contextProvider`: one of the existing legacy market contexts. Omit it for a new commodity unless that context is appropriate; no context is fetched by default.
+
+To add Platinum, Palladium, Uranium, Natural Gas, or Steel, register a new configuration under its slug with suitable data and metadata. No new route, score function, or dashboard component is needed. New external data feeds may still require adapters; registration does not invent missing prices or historical observations. The existing seed files are mapped into the normalized configuration, including `weights` and `scoreRules`.
+
+The default factor score is `clamp(50 + 50 * annual_change * direction / scale, 0, 100)`. Percentage changes divide by the absolute previous value; a zero prior value contributes a neutral change. Percentage-point and index-point changes use the raw difference. The Macro Score is the rounded sum of `factor_score * weight / 100`.
+
+Top Drivers ranks the signed contribution `(factor_score - neutral_baseline) * weight / 100`, before rounding. Positive and negative lists show up to three factors each, largest absolute impact first; neutral factors are excluded and ties use indicator IDs. When fewer than three contributors qualify, the list is shorter; an empty direction is explicitly identified. Signed impacts across all factors sum to the unrounded score minus the neutral baseline.
+
+Run the focused engine and configuration tests with `npm --prefix web run test:commodities`. Tests cover ranking, ties, neutral/zero/negative inputs, validation, all four existing scores, and an additional configuration-only commodity with no context fetch and a mocked price feed.
+
+The reusable `WhatsChangedCard` sits immediately below the score. It accepts `commodity`, indicator metadata (including favorable direction), `weights`, `currentValues`, and `historicalValues`, plus the UI locale. Observations use `{ time, value }` with Unix timestamps in seconds. The annual seed adapter is separate from the dated change engine so a live provider can supply actual observations without changing the card.
+
+Monthly, quarterly and YoY comparisons use calendar lookbacks of 1, 3 and 12 months. Month-end dates are clamped to the destination month's last day. The reference is the latest observation on or before the comparison date, with maximum staleness of 7, 14 and 31 days respectively. Missing or stale references and zero percentage baselines are unavailable; histories are never interpolated. Existing annual samples therefore support YoY only, and the shorter-period controls are disabled.
+
+Developments rank by `indicator_weight * abs(period_change)`, using configured percentage or point changes without normalization. Favorable direction determines positive/negative grouping, independently of the numeric sign; unchanged indicators are omitted. Each direction shows up to three developments and includes hover/focus tooltips. This ranking is distinct from Top Drivers' normalized score-point contributions and does not alter the Macro Score. Mixed-unit magnitudes are a heuristic, not directly comparable physical quantities.
+
+`MacroSummaryCard` appears between the Macro Score and What's Changed. Its separate deterministic generator uses predefined English/Turkish templates, real indicator scores and trends, the top three positive and top two negative weighted score contributors, and optional commodity framing in `summaryTone`. It makes no network calls or AI model requests. The card can accept an already generated `result` without changing its presentation.
+
+Summary outlook bands are strongly bullish above 80, bullish from 60 through 80, neutral from 40 through 59, bearish from 20 through 39, and strongly bearish below 20. Confidence is the fraction of total configured weight whose valid indicator scores agree with that outlook, using configured bullish/bearish factor thresholds: high at 70% or more, medium at 50% to below 70%, otherwise low. Missing scores remain in the denominator and do not inflate confidence. Confidence measures agreement, not forecast reliability. Summary timestamps use the underlying data's reporting year (currently 2025), not the current page-load date; annual sample narratives are explicitly labeled illustrative.
+
+Every indicator card includes a Price Relationship section after its interpretation. Optional `priceRelationships` configuration maps indicator IDs (including context-card IDs) to coefficients in [-1, 1]. Initially, only the supplied Gold examples are configured: ETF holdings +0.81, DXY -0.74, real rates -0.65, central-bank purchases +0.48 and M2 +0.55. They are illustrative, not independently verified estimates; no sample period, methodology or source was provided. Missing/invalid coefficients remain unavailable rather than being substituted with zero or invented values for other commodities.
+
+Relationship strength uses signed boundaries of +/-0.30 and +/-0.70. Absolute correlation determines stars: 0.80+ five (Very High), 0.60+ four (High), 0.40+ three (Medium), 0.20+ two (Low), otherwise one (Minimal). A genuine zero is weak/minimal; an unavailable coefficient has no star rating. These ratings are separate from score weights and bullish/bearish impacts. Hover/focus tooltips describe the indicated direction and clarify that correlation does not establish causation or constitute a price forecast.
+
 ### Gold
 
 Gold is treated as a monetary asset. Falling 10-year real yields and a weaker U.S. dollar are generally supportive. Gold/S&P compares gold with equities; Gold/Oil estimates how many oil barrels one ounce of gold can buy; Gold/Silver shows gold's relative strength against silver. These relationships provide context, not forecasts.
