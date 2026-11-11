@@ -20,14 +20,121 @@ const { hydrateCommodityObservations } = await import("./commodity-data.ts");
 const { normalizeDashboardPreference, readDashboardPreference, writeDashboardPreference } = await import("./dashboard-preferences.ts");
 aliases.deregister();
 
+const researchPolicy = { mode: "research", minimumCoverage: 0, requiredIndicators: [], approvedIndicators: [] };
+
 function fixture(changes, weights = changes.map(() => 100 / changes.length)) {
   const indicators = changes.map((change, index) => ({ id: `factor-${index}`, changeKind: "percentage", values: [100, 100 + change] }));
   return {
-    commodity: "test", years: [2024, 2025], chartStartYear: 2024, indicators,
+    commodity: "test", years: [2024, 2025], chartStartYear: 2024, indicators, scoringPolicy: researchPolicy,
     weights: Object.fromEntries(indicators.map((indicator, index) => [indicator.id, weights[index]])),
     scoreRules: { baseline: 50, sensitivity: 50, bullish: 60, bearish: 40, factors: Object.fromEntries(indicators.map((indicator) => [indicator.id, { direction: 1, scale: 10, trendThreshold: 0.5 }])) },
   };
 }
+
+function publicFixture(changes = [10, -10, 0], weights = [40, 40, 20]) {
+  const config = fixture(changes, weights);
+  config.scoringPolicy = { mode: "sourced-only", minimumCoverage: 80, requiredIndicators: ["factor-0", "factor-1"], approvedIndicators: config.indicators.map((indicator) => indicator.id) };
+  config.indicators = config.indicators.map((indicator) => ({ ...indicator,
+    observations: config.years.map((year, index) => ({ time: Date.UTC(year, 6, 1) / 1000, value: indicator.values[index] })),
+    dataHealth: { kind: "sourced", status: "fresh", source: "Approved test fixture", frequency: "annual", observedAt: Date.UTC(2025, 6, 1) / 1000, checkedAt: Date.UTC(2025, 6, 1) / 1000 },
+  }));
+  return config;
+}
+
+test("public scoring fails closed without an explicit policy or source approvals", () => {
+  const config = fixture([10]);
+  delete config.scoringPolicy;
+  assert.equal(scoreCommodity(config).score, null);
+  const sourced = publicFixture();
+  sourced.scoringPolicy.approvedIndicators = [];
+  const result = scoreCommodity(sourced);
+  assert.equal(result.coverage, 0);
+  assert.equal(result.score, null);
+  assert.ok(result.indicators.every((indicator) => indicator.exclusionReason === "unapproved"));
+  assert.deepEqual(result.positiveDrivers, []);
+  assert.deepEqual(result.negativeDrivers, []);
+});
+
+test("samples cannot contribute even if their IDs appear in an approval list", () => {
+  const config = publicFixture([10, -10, 1000]);
+  delete config.indicators[2].observations;
+  config.indicators[2].dataHealth = { kind: "sample", status: "sample" };
+  const result = scoreCommodity(config);
+  assert.equal(result.coverage, 80);
+  assert.equal(result.score, 50);
+  assert.equal(result.indicators[2].score, null);
+  assert.equal(result.indicators[2].contribution, 0);
+  assert.equal(result.indicators[2].exclusionReason, "sample");
+  config.indicators[2].values = [-1000000, 1000000];
+  assert.equal(scoreCommodity(config).score, 50);
+  const input = {
+    commodity: "test", commodityName: "Test Metal", score: result.score,
+    indicatorScores: result.indicators.map((indicator) => ({ id: indicator.id, name: indicator.id, score: indicator.score, trend: "up" })),
+    indicatorWeights: config.weights, topPositiveDrivers: [], topNegativeDrivers: [],
+  };
+  const narrative = generateMacroSummary(input, "en");
+  assert.ok(!narrative.summary.includes("factor-2"));
+  assert.equal(countActiveIndicators(input), 2);
+});
+
+test("coverage and critical-factor gates withhold totals and driver contributions", () => {
+  const below = publicFixture([10, -10, 10], [39, 40, 21]);
+  below.indicators[2].dataHealth.status = "stale";
+  const low = scoreCommodity(below);
+  assert.equal(low.coverage, 79);
+  assert.equal(low.score, null);
+  assert.ok(low.indicators.every((indicator) => indicator.contribution === 0));
+  const critical = publicFixture([10, -10, 10], [40, 40, 20]);
+  critical.scoringPolicy.requiredIndicators = ["factor-2"];
+  critical.indicators[2].dataHealth.status = "unavailable";
+  const missing = scoreCommodity(critical);
+  assert.equal(missing.coverage, 80);
+  assert.equal(missing.score, null);
+  assert.deepEqual(missing.missingRequired, ["factor-2"]);
+  assert.equal(scoreCommodity(publicFixture()).publishable, true);
+});
+
+test("every registered public commodity is sourced-only and awaiting approval", () => {
+  for (const config of Object.values(commodityConfigurations)) {
+    const result = scoreCommodity(config);
+    assert.equal(result.policy.mode, "sourced-only");
+    assert.equal(result.policy.minimumCoverage, 80);
+    assert.ok(result.policy.requiredIndicators.length > 0);
+    assert.deepEqual(result.policy.approvedIndicators, []);
+    assert.equal(result.score, null);
+    assert.equal(result.coverage, 0);
+    assert.ok(result.indicators.every((indicator) => indicator.score === null));
+  }
+});
+
+test("restricted recent changes exclude samples and unapproved source observations", () => {
+  const config = publicFixture();
+  config.indicators[2].dataHealth = { kind: "sample", status: "sample" };
+  config.scoringPolicy.approvedIndicators = ["factor-0"];
+  const input = commodityChangesInput(config);
+  const changes = calculateCommodityChanges(input);
+  assert.equal(input.scoringRestricted, true);
+  assert.equal(changes[0].changes.yoy, 10);
+  assert.deepEqual(changes[1].changes, { monthly: null, quarterly: null, yoy: null });
+  assert.deepEqual(changes[2].changes, { monthly: null, quarterly: null, yoy: null });
+  assert.deepEqual(rankCommodityChanges(input, changes, "yoy").positive.map((driver) => driver.id), ["factor-0"]);
+});
+
+test("public dashboards keep sample values as reference without score inputs or narrative", async () => {
+  for (const config of Object.values(commodityConfigurations)) {
+    const dashboard = await getMacroIndicators({ ...config, scoreSources: undefined, contextProvider: undefined }, "en");
+    assert.equal(dashboard.summary.score, null);
+    assert.equal(dashboard.summary.coverage, 0);
+    assert.deepEqual(dashboard.summary.dataMix, { sourcedWeight: 0, sampleWeight: 0, excludedWeight: 100 });
+    assert.equal(dashboard.summary.release.approvedCount, 0);
+    assert.equal(dashboard.summary.release.referenceSampleWeight, 100);
+    assert.ok(dashboard.cards.every((card) => card.value !== "—" && card.factorScore === null && card.scoreExclusion === "sample"));
+    assert.ok(dashboard.cards.every((card) => card.explanation.includes("reference only")));
+    assert.deepEqual(dashboard.summary.positiveDrivers, []);
+    assert.deepEqual(dashboard.summary.negativeDrivers, []);
+    assert.throws(() => generateMacroSummary({ ...summaryFixture(50), score: dashboard.summary.score }, "en"), /Invalid/);
+  }
+});
 
 test("dashboard preferences validate stored values and use safe server defaults", () => {
   assert.equal(normalizeDashboardPreference("driver-tab", "changes"), "changes");
@@ -137,12 +244,12 @@ test("missing and stale sourced observations never fall back to seeded score val
 test("source health distinguishes fresh, stale, unavailable and sample observations", () => {
   const now = Date.parse("2026-11-11T12:00:00Z") / 1000;
   const points = [{ time: now - 86400, value: 100 }, { time: now - 366 * 86400, value: 110 }];
-  const fresh = hydrateCommodityObservations(commodityConfigurations.gold, { dxy: points, "real-yields": [] }, now);
+  const fresh = hydrateCommodityObservations({ ...commodityConfigurations.gold, scoringPolicy: researchPolicy }, { dxy: points, "real-yields": [] }, now);
   assert.equal(fresh.indicators.find((item) => item.id === "dxy").dataHealth.status, "fresh");
   assert.equal(fresh.indicators.find((item) => item.id === "real-rates").dataHealth.status, "unavailable");
   assert.equal(fresh.indicators.find((item) => item.id === "etf-holdings").dataHealth.status, "sample");
   assert.equal(scoreCommodity(fresh).coverage, 75);
-  const stale = hydrateCommodityObservations(commodityConfigurations.gold, { dxy: [points[1]] }, now);
+  const stale = hydrateCommodityObservations({ ...commodityConfigurations.gold, scoringPolicy: researchPolicy }, { dxy: [points[1]] }, now);
   assert.equal(stale.indicators.find((item) => item.id === "dxy").dataHealth.status, "stale");
   assert.equal(scoreCommodity(stale).coverage, 55);
   assert.deepEqual(calculateCommodityChanges(commodityChangesInput(stale)).find((item) => item.id === "dxy").changes, { monthly: null, quarterly: null, yoy: null });
@@ -160,7 +267,7 @@ test("FRED and DXY observations reach the score and change engine; FRED blanks a
     ? new Response(`observation_date,DFII10\n${asDate(previous)},2\n${asDate(day)},1\n${asDate(new Date(day.getTime() + 86400000))},\n`)
     : Response.json({ chart: { result: [{ timestamp: [previous.getTime() / 1000, day.getTime() / 1000], indicators: { quote: [{ close: [100, 95] }] } }] } });
   try {
-    const dashboard = await getMacroIndicators({ ...commodityConfigurations.gold, contextProvider: undefined }, "en");
+    const dashboard = await getMacroIndicators({ ...commodityConfigurations.gold, contextProvider: undefined, scoringPolicy: researchPolicy }, "en");
     assert.equal(dashboard.cards.find((card) => card.id === "real-rates").value, "1.00%");
     assert.equal(dashboard.cards.find((card) => card.id === "dxy").value, "95.0");
     assert.equal(dashboard.summary.dataMix.sourcedWeight, 45);
@@ -169,7 +276,7 @@ test("FRED and DXY observations reach the score and change engine; FRED blanks a
     assert.equal(changes.find((item) => item.id === "real-rates").changes.yoy, -1);
     assert.equal(changes.find((item) => item.id === "dxy").changes.yoy, -5);
     globalThis.fetch = async () => { throw new Error("Feed offline"); };
-    const offline = await getMacroIndicators({ ...commodityConfigurations.gold, contextProvider: undefined }, "en");
+    const offline = await getMacroIndicators({ ...commodityConfigurations.gold, contextProvider: undefined, scoringPolicy: researchPolicy }, "en");
     assert.equal(offline.cards.find((card) => card.id === "dxy").factorScore, null);
     assert.equal(offline.cards.find((card) => card.id === "dxy").value, "—");
     assert.equal(offline.summary.coverage, 55);
@@ -282,11 +389,12 @@ test("recalculate from updated values without mutating stored histories", () => 
   assert.deepEqual(input.historicalValues, stored);
 });
 
-test("all commodity annual adapters provide YoY without invented shorter periods", () => {
+test("research-only annual adapters provide YoY without invented shorter periods", () => {
   for (const config of Object.values(commodityConfigurations)) {
-    const input = commodityChangesInput(config);
+    const researchConfig = { ...config, scoringPolicy: researchPolicy };
+    const input = commodityChangesInput(researchConfig);
     const result = calculateCommodityChanges(input);
-    const scores = scoreCommodity(config);
+    const scores = scoreCommodity(researchConfig);
     for (const [index, indicator] of result.entries()) {
       assert.equal(indicator.changes.monthly, null);
       assert.equal(indicator.changes.quarterly, null);
@@ -295,10 +403,10 @@ test("all commodity annual adapters provide YoY without invented shorter periods
   }
 });
 
-test("all registered commodities preserve scores and signed contributions", () => {
+test("explicit research mode preserves legacy sample scores and signed contributions", () => {
   const expected = { gold: 70, silver: 73, copper: 70, oil: 64 };
   for (const [commodity, config] of Object.entries(commodityConfigurations)) {
-    const result = scoreCommodity(config);
+    const result = scoreCommodity({ ...config, scoringPolicy: researchPolicy });
     assert.equal(result.score, expected[commodity]);
     assert.equal(result.indicators.length, 8);
     assert.equal(config.years.filter((year) => year >= config.chartStartYear).length, 10);
@@ -310,7 +418,7 @@ test("all registered commodities preserve scores and signed contributions", () =
     assert.ok(result.positiveDrivers.every((driver) => driver.contribution > 0));
     assert.ok(result.negativeDrivers.every((driver) => driver.contribution < 0));
   }
-  assert.deepEqual(scoreCommodity(commodityConfigurations.silver).negativeDrivers, []);
+  assert.deepEqual(scoreCommodity({ ...commodityConfigurations.silver, scoringPolicy: researchPolicy }).negativeDrivers, []);
   assert.equal(getCommodityConfiguration("not-a-commodity"), undefined);
   assert.equal(getCommodityConfiguration("__proto__"), undefined);
 });
@@ -365,7 +473,7 @@ test("all commodity narratives use actual score drivers without external calls",
   try {
     for (const config of Object.values(commodityConfigurations)) {
       for (const locale of ["en", "tr"]) {
-        const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined, scoreSources: undefined }, locale);
+        const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined, scoreSources: undefined, scoringPolicy: researchPolicy }, locale);
         const input = {
           commodity: config.commodity, commodityName: config.name[locale], score: dashboard.summary.score,
           indicatorScores: dashboard.cards.map((card) => ({ id: card.id, name: card.name, score: card.factorScore, trend: card.trend })),
@@ -405,9 +513,9 @@ test("active indicators count valid weighted scores, including neutral and zero 
   assert.equal(countActiveIndicators({ indicatorScores: [], indicatorWeights: {} }), 0);
 });
 
-test("each commodity summary is based on its eight active score indicators", async () => {
+test("explicit research summaries can use eight sample indicators", async () => {
   for (const config of Object.values(commodityConfigurations)) {
-    const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined, scoreSources: undefined }, "en");
+    const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined, scoreSources: undefined, scoringPolicy: researchPolicy }, "en");
     const input = {
       indicatorScores: dashboard.cards.map((card) => ({ id: card.id, name: card.name, score: card.factorScore, trend: card.trend })),
       indicatorWeights: config.weights,

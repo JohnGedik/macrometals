@@ -42,7 +42,7 @@ export function IndicatorCard({ card, locale }: { card: IndicatorCardData; local
   return (
     <article className={`indicator-card trend-indicator-card impact-${card.impact}`}>
       <div className="indicator-card-top"><h3>{card.name}</h3></div>
-      <span className="indicator-current-label">{t.current}</span>
+      <span className="indicator-current-label">{card.scoreExclusion === "sample" ? t.sampleValueLabel : t.current}</span>
       <div className="indicator-value">{card.value}</div>
       {(card.previousValue || card.yoyChange || card.ninetyDayChange) && (
         <div className="indicator-period-values">
@@ -61,7 +61,7 @@ export function IndicatorCard({ card, locale }: { card: IndicatorCardData; local
         </div>
       )}
       <IndicatorInterpretation text={card.explanation} />
-      {card.dataHealth && <IndicatorDataHealth health={card.dataHealth} locale={locale} excluded={card.group !== "context" && card.dataHealth.kind === "sourced" && card.factorScore == null} />}
+      {card.dataHealth && <IndicatorDataHealth health={card.dataHealth} locale={locale} exclusionReason={card.group !== "context" ? card.scoreExclusion : undefined} />}
       <PriceRelationship commodityName={card.commodityName} indicatorName={card.name} indicatorId={card.id} correlation={card.priceCorrelation} locale={locale} />
       {card.provenance && <p className="indicator-source">{card.provenance}</p>}
     </article>

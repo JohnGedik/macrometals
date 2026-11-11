@@ -30,12 +30,13 @@ export function WhatsChangedCard({ locale, ...input }: CommodityChangesInput & {
         <div className="whats-changed-periods" role="group" aria-label={t.changePeriod}>
           {options.map((option) => {
             const enabled = available.some((candidate) => candidate.period === option.period);
-            return <button key={option.period} type="button" disabled={!enabled} aria-pressed={period === option.period}
+            return <button key={option.period} type="button" disabled={!enabled} aria-pressed={enabled && period === option.period}
               title={!enabled ? t.periodHistoryUnavailable : undefined} onClick={() => setPreferredPeriod(option.period)}>{option.label}</button>;
           })}
         </div>
       </div>
       <p className="whats-changed-note">{t.changeCoverage.replace("{count}", String(comparisonCount)).replace("{total}", String(input.indicators.length))}{comparisonCount < input.indicators.length && ` ${t.periodHistoryUnavailable}`}</p>
+      {input.scoringRestricted && <p className="whats-changed-note">{t.approvedChangesOnly}</p>}
       <div className="whats-changed-columns">
         {([
           { key: "positive", title: t.positiveDevelopments, drivers: ranked.positive, empty: t.noPositiveContributors },

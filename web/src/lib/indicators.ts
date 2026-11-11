@@ -29,6 +29,7 @@ export type IndicatorCardData = {
   comparison?: { label: string; value: string };
   score?: number;
   factorScore?: number | null;
+  scoreExclusion?: "sample" | "unapproved" | "unavailable" | null;
   commodityName?: string;
   priceCorrelation?: number;
   dataHealth?: IndicatorDataHealth;
@@ -41,6 +42,7 @@ export type MacroScoreSummary = {
   score: number | null;
   coverage: number;
   dataMix: { sourcedWeight: number; sampleWeight: number; excludedWeight: number };
+  release: { mode: "sourced-only" | "research"; minimumCoverage: number; missingRequired: string[]; approvedCount: number; referenceSampleWeight: number };
   status: Impact;
   statusLabel: string;
   classification: string;
@@ -261,12 +263,15 @@ function macroScoreCards(locale: Locale, config: CommodityConfiguration) {
         return { time: Date.UTC(year, 6, 1) / 1000, value: metric.values[index], label: String(year) };
       });
     const explanation = metric.explanation[locale];
-    return { ...makeCard(locale, config.commodity, metric.id, metric.name[locale], value(current), trend(yoy, config.scoreRules.factors[metric.id].trendThreshold), impact, typeof explanation === "string" ? explanation : explanation[impact], {
+    const exclusion = result.indicators[index].exclusionReason;
+    const interpretation = exclusion === "sample" ? t.sampleReferenceInterpretation : exclusion === "unapproved" ? t.unapprovedReferenceInterpretation
+      : typeof explanation === "string" ? explanation : explanation[impact];
+    return { ...makeCard(locale, config.commodity, metric.id, metric.name[locale], value(current), trend(yoy, config.scoreRules.factors[metric.id].trendThreshold), impact, interpretation, {
         previousValue: value(previous),
         yoyChange: formatChange(yoy),
         group: metric.tier === 1 ? "tier1" : "tier2",
         chart: { points, unit: unitLabel, digits: metric.digits, label: metric.dataHealth?.kind === "sourced" ? t.sourcedHistory : t.lastTenYears, zeroBaseline: false },
-      }), factorScore: result.indicators[index].score, dataHealth: metric.dataHealth,
+      }), factorScore: result.indicators[index].score, scoreExclusion: result.indicators[index].exclusionReason, dataHealth: metric.dataHealth,
       ninetyDayChange: metric.dataHealth?.kind === "sourced" ? formatChange(change90) : undefined };
   });
   const { score, status } = result;
@@ -283,12 +288,18 @@ function macroScoreCards(locale: Locale, config: CommodityConfiguration) {
       score,
       coverage: result.coverage,
       dataMix: { sourcedWeight, sampleWeight, excludedWeight: 100 - result.coverage },
+      release: {
+        mode: result.policy.mode, minimumCoverage: result.policy.minimumCoverage,
+        missingRequired: result.missingRequired.map((id) => config.indicators.find((indicator) => indicator.id === id)!.name[locale]),
+        approvedCount: result.policy.approvedIndicators.length,
+        referenceSampleWeight: config.indicators.reduce((total, indicator) => total + (indicator.dataHealth?.kind !== "sourced" ? config.weights[indicator.id] : 0), 0),
+      },
       status,
       statusLabel: impactLabel(status, locale),
       classification,
-      note: t.macroScoreNote.replace("{count}", String(config.indicators.length)),
+      note: (result.policy.mode === "sourced-only" ? t.scoreModelNote : t.macroScoreNote).replace("{count}", String(config.indicators.length)),
       weights: `${t.weightsLabel}: ${config.indicators.map((indicator) => `${indicator.name[locale]} ${number(config.weights[indicator.id], locale, 0)}%`).join(" · ")}`,
-      disclosure: config.scoreSources ? t.mixedDataDisclosure : config.disclosure[locale],
+      disclosure: result.policy.mode === "sourced-only" ? t.sourcedOnlyDisclosure : config.disclosure[locale],
       positiveDrivers: result.positiveDrivers.map(driverLabel),
       negativeDrivers: result.negativeDrivers.map(driverLabel),
     },

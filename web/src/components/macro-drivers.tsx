@@ -3,6 +3,9 @@ import { messages, type Locale } from "@/lib/i18n";
 
 export function MacroDrivers({ summary, locale }: { summary: MacroScoreSummary; locale: Locale }) {
   const t = messages[locale].macro;
+  if (summary.score === null) return <section className="macro-drivers" aria-labelledby="macro-drivers-title">
+    <h3 id="macro-drivers-title">{t.topDrivers}</h3><p className="macro-drivers-note">{t.scoreDriversWithheld}</p>
+  </section>;
   const format = new Intl.NumberFormat(locale === "tr" ? "tr-TR" : "en-US", {
     minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "always",
   });

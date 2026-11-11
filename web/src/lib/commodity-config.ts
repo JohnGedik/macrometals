@@ -33,6 +33,11 @@ function configure(
 ): CommodityConfiguration {
   return {
     ...metadata,
+    scoringPolicy: metadata.scoringPolicy ?? {
+      mode: "sourced-only", minimumCoverage: 80,
+      requiredIndicators: seed.metrics.filter((metric) => metric.tier === 1).map((metric) => metric.id),
+      approvedIndicators: [],
+    },
     years: seed.years,
     chartStartYear: seed.chartStartYear,
     indicators: seed.metrics.map((metric) => ({

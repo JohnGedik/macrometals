@@ -32,15 +32,22 @@ export function MacroIndicators({
         <section className={`gold-macro-score impact-${macroScore.status}`} aria-labelledby="macro-score-title">
           <div className="gold-macro-score-heading">
             <div><p className="eyebrow">{macroScore.note}</p><h3 id="macro-score-title">{scoreTitle}</h3></div>
-            <div className="gold-macro-score-total"><strong>{macroScore.score ?? t.unavailable}</strong>{macroScore.score !== null && <span>/100</span>}<span className={`impact-label impact-label-${macroScore.status}`}>{macroScore.statusLabel}</span><span className="indicator-classification">{macroScore.classification}</span></div>
+            <div className="gold-macro-score-total"><strong className={macroScore.score === null ? "macro-score-withheld" : undefined}>{macroScore.score === null ? t.scoreWithheld : macroScore.score}</strong>{macroScore.score !== null && <><span>/100</span><span className={`impact-label impact-label-${macroScore.status}`}>{macroScore.statusLabel}</span><span className="indicator-classification">{macroScore.classification}</span></>}</div>
           </div>
           {macroScore.score !== null && <div className="stress-track gold-macro-score-track" role="progressbar" aria-label={scoreTitle} aria-valuemin={0} aria-valuemax={100} aria-valuenow={macroScore.score}><span style={{ width: `${macroScore.score}%` }} /></div>}
           <p className="gold-macro-weights">{macroScore.weights}</p>
           <div className="macro-score-coverage">
-            <span>{t.scoreCoverageLabel}: {macroScore.coverage.toFixed(0)}% · {t.sourcedWeightLabel}: {macroScore.dataMix.sourcedWeight.toFixed(0)}% · {t.sampleWeightLabel}: {macroScore.dataMix.sampleWeight.toFixed(0)}% · {t.excludedWeightLabel}: {macroScore.dataMix.excludedWeight.toFixed(0)}%</span>
+            <span>{t.scoreCoverageLabel}: {macroScore.coverage.toFixed(0)}% · {t.approvedSourcedWeightLabel}: {macroScore.dataMix.sourcedWeight.toFixed(0)}% · {t.excludedWeightLabel}: {macroScore.dataMix.excludedWeight.toFixed(0)}%</span>
             <button type="button" className="macro-coverage-info" aria-label={t.coverageDetails} aria-describedby={`${config.commodity}-coverage-tooltip`}><Info size={14} aria-hidden="true" /></button>
             <span className="macro-coverage-tooltip" role="tooltip" id={`${config.commodity}-coverage-tooltip`}>{t.coverageExplanation}</span>
           </div>
+          {macroScore.release.mode === "sourced-only" && <div className="macro-score-policy">
+            <p>{t.scoreApprovalCount.replace("{count}", String(macroScore.release.approvedCount)).replace("{total}", String(config.indicators.length))} · {t.referenceSamplesExcluded.replace("{weight}", macroScore.release.referenceSampleWeight.toFixed(0))}</p>
+            {macroScore.score === null && <>
+              <p>{t.scoreWithheldReason.replace("{minimum}", String(macroScore.release.minimumCoverage))}</p>
+              {macroScore.release.missingRequired.length > 0 && <p>{t.missingCriticalFactors}: {macroScore.release.missingRequired.join(" · ")}</p>}
+            </>}
+          </div>}
           <p className="gold-macro-disclosure">{macroScore.disclosure}</p>
         </section>
       )}
@@ -57,7 +64,10 @@ export function MacroIndicators({
         topNegativeDrivers: macroScore.negativeDrivers,
         tone: config.summaryTone?.[locale],
         rules: config.scoreRules,
-      }} locale={locale} isSample={macroScore.dataMix.sampleWeight > 0} dataNote={config.scoreSources ? t.mixedSummaryNote : undefined} />}
+      }} locale={locale} isSample={macroScore.dataMix.sampleWeight > 0} dataNote={macroScore.release.mode === "sourced-only" ? t.sourcedOnlySummaryNote : config.scoreSources ? t.mixedSummaryNote : undefined} />}
+      {macroScore && macroScore.score === null && <section className="macro-summary-card macro-summary-withheld" aria-labelledby={`${config.commodity}-macro-summary-title`}>
+        <h3 id={`${config.commodity}-macro-summary-title`}>{t.macroSummary}</h3><p className="macro-summary-text">{t.summaryWithheld}</p>
+      </section>}
       {macroScore && <DriverInsightsTabs commodity={config.commodity} locale={locale}
         scoreDrivers={<MacroDrivers summary={macroScore} locale={locale} />}
         recentChanges={<WhatsChangedCard {...commodityChangesInput(config)} locale={locale} />} />}

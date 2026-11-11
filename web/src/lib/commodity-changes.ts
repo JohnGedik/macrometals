@@ -9,6 +9,7 @@ export type CommodityChangesInput = {
   weights: Readonly<Record<string, number>>;
   currentValues: Readonly<Record<string, ChangeObservation | undefined>>;
   historicalValues: Readonly<Record<string, readonly ChangeObservation[] | undefined>>;
+  scoringRestricted?: boolean;
 };
 export type IndicatorChange = {
   id: string;
@@ -23,15 +24,18 @@ const periods: Record<ChangePeriod, { months: number; toleranceDays: number }> =
 };
 
 export function commodityChangesInput(config: CommodityConfiguration): CommodityChangesInput {
+  const scoringRestricted = config.scoringPolicy?.mode !== "research";
   const historicalValues = Object.fromEntries(config.indicators.map((indicator) => [indicator.id,
     indicator.observations ?? config.years.map((year, index) => ({ time: Date.UTC(year, 6, 1) / 1000, value: indicator.values[index] })),
   ]));
   return {
     commodity: config.commodity,
+    scoringRestricted,
     indicators: config.indicators.map((indicator) => ({ ...indicator, favorableDirection: config.scoreRules.factors[indicator.id].direction })),
     weights: config.weights,
     currentValues: Object.fromEntries(config.indicators.map((indicator) => [indicator.id,
-      indicator.dataHealth?.kind === "sourced" && indicator.dataHealth.status !== "fresh" ? undefined : historicalValues[indicator.id].at(-1),
+      scoringRestricted && (indicator.dataHealth?.kind !== "sourced" || !config.scoringPolicy?.approvedIndicators.includes(indicator.id))
+        ? undefined : indicator.dataHealth?.kind === "sourced" && indicator.dataHealth.status !== "fresh" ? undefined : historicalValues[indicator.id].at(-1),
     ])),
     historicalValues,
   };

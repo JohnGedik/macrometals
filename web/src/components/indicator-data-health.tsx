@@ -1,7 +1,7 @@
 import type { IndicatorDataHealth as DataHealth } from "@/lib/commodity-score";
 import { messages, type Locale } from "@/lib/i18n";
 
-export function IndicatorDataHealth({ health, locale, excluded = false }: { health: DataHealth; locale: Locale; excluded?: boolean }) {
+export function IndicatorDataHealth({ health, locale, exclusionReason }: { health: DataHealth; locale: Locale; exclusionReason?: "sample" | "unapproved" | "unavailable" | null }) {
   const t = messages[locale].macro;
   const statuses = { fresh: t.healthFresh, stale: t.healthStale, unavailable: t.unavailable, sample: t.healthSample };
   const frequencies = { annual: t.frequencyAnnual, daily: t.frequencyDaily, weekly: t.frequencyWeekly, monthly: t.frequencyMonthly, unknown: t.unavailable };
@@ -17,7 +17,7 @@ export function IndicatorDataHealth({ health, locale, excluded = false }: { heal
         <div><dt>{health.kind === "sample" && health.frequency === "annual" ? t.sampleYearLabel : t.observationDateLabel}</dt><dd>{date}</dd></div>
         <div><dt>{t.frequencyLabel}</dt><dd>{frequencies[health.frequency]}</dd></div>
       </dl>
-      {excluded && <p className="indicator-health-note">{t.excludedScoreNote}</p>}
+      {exclusionReason && <p className="indicator-health-note">{exclusionReason === "sample" ? t.sampleExcludedScoreNote : exclusionReason === "unapproved" ? t.unapprovedScoreNote : t.excludedScoreNote}</p>}
     </section>
   );
 }
