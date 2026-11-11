@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { TriangleAlert } from "lucide-react";
 import { notFound } from "next/navigation";
 import { ArticleCard } from "@/components/article-card";
 import { getArticles } from "@/lib/articles";
@@ -35,6 +36,10 @@ export default async function TagPage({ params }: RouteProps) {
 
   return (
     <section className={`listing-page content-width${config ? " commodity-page" : ""}`}>
+      {config && <aside className="dashboard-prototype-notice" aria-labelledby="dashboard-prototype-title">
+        <TriangleAlert size={18} aria-hidden="true" />
+        <div><strong id="dashboard-prototype-title">{messages[locale].macro.prototypeTitle}</strong><p>{messages[locale].macro.prototypeNotice}</p></div>
+      </aside>}
       {!config && <div className="section-kicker"><span className="eyebrow">{t.file}</span><span className="kicker-line" /></div>}
       {config && commodityData
         ? <CommodityHeader name={label} title={config.dashboardTitle[locale]} data={commodityData} labels={messages[locale].commodityHeader} locale={locale} />

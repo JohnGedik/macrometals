@@ -2319,6 +2319,11 @@ textarea:focus-visible {
 }
 
 .listing-page.commodity-page { padding-top: 24px; }
+.dashboard-prototype-notice { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 16px; padding: 10px 12px; border: 1px solid #d5bc74; border-left: 3px solid #9a741e; background: #fbf3d9; color: #674e16; font-size: 11px; line-height: 1.5; }
+.dashboard-prototype-notice > svg { flex: 0 0 18px; margin-top: 2px; }
+.dashboard-prototype-notice > div { min-width: 0; overflow-wrap: anywhere; }
+.dashboard-prototype-notice strong { display: block; margin-bottom: 3px; font-size: 12px; }
+.dashboard-prototype-notice p { margin: 0; }
 .commodity-page .macro-indicators { margin: 0 0 32px; padding: 0 0 14px; border-top: 0; }
 .commodity-page .gold-macro-score { margin-top: 12px; }
 .commodity-page .macro-refresh { margin: 8px 0; }
