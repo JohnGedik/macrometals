@@ -44,7 +44,7 @@ export function IndicatorCard({ card, locale }: { card: IndicatorCardData; local
       <div className="indicator-value">{card.value}</div>
       {card.comparison && <div className="indicator-comparison"><span>{card.comparison.label}</span><strong>{card.comparison.value}</strong></div>}
       <IndicatorStatus impact={card.impact} impactLabel={card.impactLabel} trend={card.trend} trendLabel={card.trendLabel} subject={card.subject} severity={card.severity} />
-      {card.chart && <IndicatorChart name={card.name} points={card.chart.points} locale={locale} unit={card.chart.unit} digits={card.chart.digits} lastYearLabel={t.lastYear} chartLabel={card.chart.label} zeroBaseline={card.chart.zeroBaseline} />}
+      {card.chart && <IndicatorChart name={card.name} points={card.chart.points} locale={locale} unit={card.chart.unit} digits={card.chart.digits} axisDigits={card.chart.axisDigits} lastYearLabel={t.lastYear} chartLabel={card.chart.label} zeroBaseline={card.chart.zeroBaseline} />}
       <IndicatorInterpretation text={card.explanation} />
     </article>
   );

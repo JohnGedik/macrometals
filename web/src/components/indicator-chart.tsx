@@ -1,6 +1,6 @@
 "use client";
 
-import { Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { IndicatorChartPoint } from "@/lib/indicators";
 import type { Locale } from "@/lib/i18n";
 
@@ -10,6 +10,7 @@ export function IndicatorChart({
   locale,
   unit,
   digits,
+  axisDigits,
   lastYearLabel,
   chartLabel,
   zeroBaseline = false,
@@ -19,12 +20,14 @@ export function IndicatorChart({
   locale: Locale;
   unit: string;
   digits: number;
+  axisDigits?: number;
   lastYearLabel: string;
   chartLabel: string;
   zeroBaseline?: boolean;
 }) {
   const localeCode = locale === "tr" ? "tr-TR" : "en-US";
   const numberFormat = new Intl.NumberFormat(localeCode, { minimumFractionDigits: digits, maximumFractionDigits: digits });
+  const axisNumberFormat = new Intl.NumberFormat(localeCode, { maximumFractionDigits: axisDigits ?? digits });
   const dateFormat = new Intl.DateTimeFormat(localeCode, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   const monthYearFormat = new Intl.DateTimeFormat(localeCode, { month: "short", year: "2-digit", timeZone: "UTC" });
   const quarterlyTicks = points.reduce<number[]>((ticks, point) => {
@@ -39,13 +42,15 @@ export function IndicatorChart({
     const parts = monthYearFormat.formatToParts(new Date(time * 1000));
     return `${parts.find((part) => part.type === "month")?.value ?? ""}-${parts.find((part) => part.type === "year")?.value ?? ""}`;
   };
+  const formatAxisValue = (value: number) => `${axisNumberFormat.format(value)}${unit}`;
 
   return (
     <div className="indicator-chart" role="img" aria-label={`${name}, ${lastYearLabel}`}>
       <span className="indicator-chart-caption">{chartLabel}</span>
       <div className="indicator-chart-plot">
         <ResponsiveContainer width="100%" height="100%">
-        <LineChart data={points} margin={{ top: 8, right: 3, bottom: 3, left: 3 }}>
+        <LineChart data={points} margin={{ top: 8, right: 8, bottom: 3, left: 3 }}>
+          <CartesianGrid stroke="#333333" strokeOpacity={0.3} horizontal vertical />
           <XAxis
             dataKey="time"
             type="number"
@@ -53,12 +58,23 @@ export function IndicatorChart({
             ticks={quarterlyTicks}
             padding={{ left: 18, right: 18 }}
             tickFormatter={formatMonthYear}
-            tick={{ fill: "var(--muted)", fontSize: 9 }}
+            tick={{ fill: "#888888", fontSize: 9 }}
             tickLine={false}
-            axisLine={{ stroke: "var(--line)" }}
+            axisLine={{ stroke: "#888888" }}
             height={18}
             interval={0}
             minTickGap={12}
+          />
+          <YAxis
+            dataKey="value"
+            domain={["auto", "auto"]}
+            tickFormatter={formatAxisValue}
+            tick={{ fill: "#888888", fontSize: 9 }}
+            tickLine={false}
+            axisLine={{ stroke: "#888888" }}
+            width={54}
+            tickCount={5}
+            allowDataOverflow={false}
           />
           <Tooltip
             cursor={{ stroke: "var(--chart-cursor)", strokeDasharray: "3 3" }}

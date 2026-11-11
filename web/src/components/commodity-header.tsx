@@ -1,6 +1,6 @@
 "use client";
 
-import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { CommodityHeaderData } from "@/lib/indicators";
 import type { Locale } from "@/lib/i18n";
 
@@ -65,6 +65,7 @@ export function CommodityHeader({
       <div className="commodity-header-chart" role="img" aria-label={`${name}, ${labels.chartLabel}`}>
         {data.points.length ? <ResponsiveContainer width="100%" height="100%">
           <LineChart data={data.points} margin={{ top: 10, right: 12, bottom: 3, left: 3 }}>
+            <CartesianGrid stroke="#333333" strokeOpacity={0.3} horizontal vertical />
             <XAxis
               dataKey="time"
               type="number"
@@ -75,9 +76,9 @@ export function CommodityHeader({
                 const parts = monthYearFormat.formatToParts(new Date(time * 1000));
                 return `${parts.find((part) => part.type === "month")?.value ?? ""}-${parts.find((part) => part.type === "year")?.value ?? ""}`;
               }}
-              tick={{ fill: "var(--muted)", fontSize: 10 }}
+              tick={{ fill: "#888888", fontSize: 10 }}
               tickLine={false}
-              axisLine={{ stroke: "var(--line)" }}
+              axisLine={{ stroke: "#888888" }}
               height={20}
               interval={0}
               minTickGap={14}
@@ -86,9 +87,9 @@ export function CommodityHeader({
               dataKey="value"
               domain={[0, "auto"]}
               tickFormatter={(value: number) => `$${priceFormat.format(value)}`}
-              tick={{ fill: "var(--muted)", fontSize: 9 }}
+              tick={{ fill: "#888888", fontSize: 9 }}
               tickLine={false}
-              axisLine={false}
+              axisLine={{ stroke: "#888888" }}
               width={58}
               tickCount={4}
               allowDataOverflow={false}
