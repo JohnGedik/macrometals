@@ -17,6 +17,7 @@ const { commodityConfigurations, getCommodityConfiguration } = await import("./c
 const { getMacroIndicators, getCommodityHeaderData } = await import("./indicators.ts");
 const { countActiveIndicators, generateMacroSummary } = await import("./macro-summary.ts");
 const { hydrateCommodityObservations } = await import("./commodity-data.ts");
+const { derivedDataHealth, currentStressIndex, stressIndexAt } = await import("./derived-data.ts");
 const { normalizeDashboardPreference, readDashboardPreference, writeDashboardPreference } = await import("./dashboard-preferences.ts");
 aliases.deregister();
 
@@ -134,6 +135,121 @@ test("public dashboards keep sample values as reference without score inputs or 
     assert.deepEqual(dashboard.summary.negativeDrivers, []);
     assert.throws(() => generateMacroSummary({ ...summaryFixture(50), score: dashboard.summary.score }, "en"), /Invalid/);
   }
+});
+
+function derivedFixture() {
+  const now = Date.parse("2026-11-11T12:00:00Z") / 1000;
+  const values = { gold: [100, 110], dxy: [100, 95], "real-rates": [0, 1] };
+  const inputs = Object.entries(values).map(([id, amounts]) => ({ id, source: id, maxAgeDays: id === "real-rates" ? 5 : 10,
+    points: [{ time: now - 90 * 86400, value: amounts[0] }, { time: now, value: amounts[1] }],
+  }));
+  return { now, inputs };
+}
+
+test("derived health inherits a stale rate dependency instead of a fresh output date", () => {
+  const { now, inputs } = derivedFixture();
+  inputs[2].points = inputs[2].points.map((point) => ({ ...point, time: point.time - 101 * 86400 }));
+  const result = currentStressIndex(inputs, now);
+  assert.equal(result.score, null);
+  assert.equal(result.health.status, "stale");
+  assert.equal(result.health.observedAt, now - 101 * 86400);
+  assert.equal(result.health.dependencies.find((input) => input.id === "real-rates").status, "stale");
+});
+
+test("stress index uses bounded observations and a common calculation date", () => {
+  const { now, inputs } = derivedFixture();
+  assert.equal(currentStressIndex(inputs, now).score, 62);
+  inputs[2].points = inputs[2].points.map((point) => ({ ...point, time: point.time - 2 * 86400 }));
+  for (const input of inputs.slice(0, 2)) {
+    input.points.push({ time: now - 92 * 86400, value: 100 }, { time: now - 2 * 86400, value: 100 });
+  }
+  const result = currentStressIndex(inputs, now);
+  assert.equal(result.asOf, now - 2 * 86400);
+  assert.equal(result.score, 33);
+  assert.equal(result.health.status, "fresh");
+});
+
+test("derived missing inputs, historical gaps and future-only observations fail closed", () => {
+  const { now, inputs } = derivedFixture();
+  assert.equal(currentStressIndex(inputs.slice(0, 2), now).health.status, "unavailable");
+  assert.equal(currentStressIndex(inputs.slice(0, 2), now).score, null);
+  inputs[1].points[0].time -= 30 * 86400;
+  assert.equal(stressIndexAt(inputs, now), null);
+  assert.equal(currentStressIndex(inputs, now).health.status, "unavailable");
+  inputs[1].points = [{ time: now + 86400, value: 100 }];
+  assert.equal(derivedDataHealth(inputs, now).status, "unavailable");
+  assert.equal(stressIndexAt(inputs, now + 500 * 86400), null);
+});
+
+test("Silver stress card propagates stale and missing dependency health through actual assembly", async () => {
+  const originalFetch = globalThis.fetch;
+  const day = new Date(Date.now() - 86400000);
+  day.setUTCHours(12, 0, 0, 0);
+  const now = day.getTime() / 1000;
+  const offsets = [182, 92, 90, 2, 0];
+  let scenario = "fresh";
+  globalThis.fetch = async (raw) => {
+    const url = new URL(String(raw));
+    if (url.hostname.includes("fred")) {
+      if (scenario === "missing-rates") return new Response("Unavailable", { status: 503 });
+      const shift = scenario === "stale-rates" ? 101 : 0;
+      return new Response("observation_date,DFII10\n" + offsets.map((offset, index) => `${new Date((now - (offset + shift) * 86400) * 1000).toISOString().slice(0, 10)},${[-1, -0.1, 0, 0.9, 1][index]}`).join("\n"));
+    }
+    const symbol = decodeURIComponent(url.pathname.split("/").at(-1));
+    const shift = scenario === "stale-gold" && symbol === "GC=F" ? 60 : 0;
+    const timestamp = offsets.map((offset) => now - (offset + shift) * 86400);
+    return Response.json({ chart: { result: [{ meta: { regularMarketTime: timestamp.at(-1), regularMarketPrice: 110 }, timestamp, indicators: { quote: [{ close: offsets.map((_, index) => 100 + index * 2.5) }] } }] } });
+  };
+  try {
+    const dashboard = () => getMacroIndicators({ ...commodityConfigurations.silver, scoreSources: undefined }, "en");
+    const fresh = (await dashboard()).cards.find((card) => card.id === "stress-index");
+    assert.equal(fresh.dataHealth.status, "fresh");
+    assert.notEqual(fresh.value, "—");
+    assert.equal(fresh.dataHealth.dependencies.length, 3);
+    scenario = "stale-rates";
+    const stale = (await dashboard()).cards.find((card) => card.id === "stress-index");
+    assert.equal(stale.value, "—");
+    assert.equal(stale.score, undefined);
+    assert.equal(stale.impact, "unavailable");
+    assert.equal(stale.dataHealth.status, "stale");
+    assert.equal(stale.dataHealth.dependencies.find((input) => input.id === "real-rates").observedAt, now - 101 * 86400);
+    assert.ok(stale.chart.points.every((point) => point.time <= now - 96 * 86400));
+    scenario = "missing-rates";
+    const missing = (await dashboard()).cards.find((card) => card.id === "stress-index");
+    assert.equal(missing.value, "—");
+    assert.equal(missing.dataHealth.status, "unavailable");
+    scenario = "stale-gold";
+    const oldGold = await dashboard();
+    assert.equal(oldGold.cards.find((card) => card.id === "stress-index").value, "—");
+    const ratio = oldGold.cards.find((card) => card.id === "gold-silver");
+    assert.equal(ratio.value, "—");
+    assert.equal(ratio.impact, "unavailable");
+    assert.notEqual(ratio.dataHealth.status, "fresh");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("ratio freshness cannot be established by fresh quote metadata over stale aligned history", async () => {
+  const originalFetch = globalThis.fetch;
+  const now = Math.floor(Date.now() / 1000) - 86400;
+  globalThis.fetch = async (raw) => {
+    const url = new URL(String(raw));
+    if (url.hostname.includes("fred")) return new Response("observation_date,DFII10\n");
+    const timestamp = [now - 465 * 86400, now - 100 * 86400];
+    return Response.json({ chart: { result: [{ meta: { regularMarketPrice: 110, regularMarketTime: now }, timestamp, indicators: { quote: [{ close: [100, 110] }] } }] } });
+  };
+  try {
+    const ids = { gold: ["gold-sp", "gold-oil", "gold-silver"], silver: ["gold-silver"], copper: ["copper-gold"], oil: ["oil-gold-ratio"] };
+    for (const [commodity, config] of Object.entries(commodityConfigurations)) {
+      const dashboard = await getMacroIndicators({ ...config, scoreSources: undefined }, "en");
+      for (const id of ids[commodity]) {
+        const card = dashboard.cards.find((candidate) => candidate.id === id);
+        assert.equal(card.value, "—");
+        assert.equal(card.dataHealth.status, "stale");
+        assert.equal(card.impact, "unavailable");
+        assert.equal(card.dataHealth.dependencies.find((input) => input.id === "matched-history").observedAt, now - 100 * 86400);
+      }
+    }
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("dashboard preferences validate stored values and use safe server defaults", () => {

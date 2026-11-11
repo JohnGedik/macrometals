@@ -3,6 +3,7 @@ import { getOilInventory } from "@/lib/oil-inventory";
 import { getCommodityConfiguration } from "@/lib/commodity-config";
 import { scoreCommodity, type CommodityConfiguration, type IndicatorDataHealth } from "@/lib/commodity-score";
 import { hydrateCommodityObservations } from "@/lib/commodity-data";
+import { currentStressIndex, derivedDataHealth, stressIndexAt, type DerivedDependency } from "@/lib/derived-data";
 
 export type { CommodityKey } from "@/lib/commodity-config";
 
@@ -210,23 +211,6 @@ function ratioImpact(current: number | null, average: number | null, favorableWh
   return "neutral";
 }
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function normalizedScore(change: number | null, scale: number) {
-  return change === null ? null : clamp(50 + (change / scale) * 50, 0, 100);
-}
-
-function stressScore(goldChange: number | null, realYieldChange: number | null, dollarChange: number | null) {
-  if (goldChange === null || realYieldChange === null || dollarChange === null) return null;
-  const score =
-    normalizedScore(goldChange, 12)! * 0.4 +
-    normalizedScore(-realYieldChange, 0.75)! * 0.35 +
-    normalizedScore(-dollarChange, 5)! * 0.25;
-  return Math.round(score);
-}
-
 function number(value: number | null, locale: Locale, digits = 2) {
   if (value === null) return "—";
   return new Intl.NumberFormat(locale === "tr" ? "tr-TR" : "en-US", {
@@ -315,7 +299,7 @@ function makeCard(
   direction: Trend,
   impact: Impact,
   explanation: string,
-  extra?: Pick<IndicatorCardData, "previousValue" | "yoyChange" | "group" | "comparison" | "score" | "severity" | "provenance" | "chart">,
+  extra?: Pick<IndicatorCardData, "previousValue" | "yoyChange" | "group" | "comparison" | "score" | "severity" | "provenance" | "chart" | "dataHealth">,
 ): IndicatorCardData {
   const t = messages[locale].macro;
   return {
@@ -346,7 +330,7 @@ export async function getMacroIndicators(config: CommodityConfiguration, locale:
   const contextSources: Record<string, "dxy" | "real-yields"> = { "live-dxy": "dxy", "oil-dxy": "dxy", "live-real-rates": "real-yields" };
   const contextCards = context.cards.filter((card) => !requestedSources.has(contextSources[card.id]));
   return {
-    cards: [...macro.cards, ...contextCards.map((card) => ({ ...card, group: "context" as const, dataHealth: contextDataHealth(card, config.commodity) }))].map((card) => ({
+    cards: [...macro.cards, ...contextCards.map((card) => ({ ...card, group: "context" as const, dataHealth: card.dataHealth ?? contextDataHealth(card, config.commodity) }))].map((card) => ({
       ...card,
       commodityName: config.name[locale],
       priceCorrelation: config.priceRelationships?.[card.id],
@@ -374,6 +358,22 @@ function contextDataHealth(card: IndicatorCardData, commodity: string): Indicato
   };
 }
 
+function quoteDependency(id: string, source: string, series: Series | null, maxAgeDays: number): DerivedDependency {
+  const time = series?.currentTime ?? series?.points.at(-1)?.time;
+  return { id, source, maxAgeDays, points: series && time !== undefined ? [{ time, value: series.current }] : [] };
+}
+
+function protectDerivedCard(card: IndicatorCardData, inputs: readonly DerivedDependency[], locale: Locale): IndicatorCardData {
+  const health = card.dataHealth ?? derivedDataHealth([...inputs, {
+    id: "matched-history", source: "Aligned historical observations", points: card.chart?.points ?? [],
+    maxAgeDays: Math.min(...inputs.map((input) => input.maxAgeDays)),
+  }]);
+  if (health.status === "fresh") return { ...card, dataHealth: health };
+  return { ...card, value: "—", trend: "unavailable", trendLabel: trendLabel("unavailable", locale), impact: "unavailable",
+    impactLabel: impactLabel("unavailable", locale), explanation: messages[locale].macro.derivedUnavailable,
+    previousValue: undefined, yoyChange: undefined, score: undefined, severity: undefined, dataHealth: health };
+}
+
 async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil", locale: Locale) {
   const t = messages[locale].macro;
   if (metal === "oil") return getOilIndicators(locale);
@@ -388,11 +388,23 @@ async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil",
     metal === "copper" ? getMarketSeries("HG=F") : Promise.resolve(null),
   ]);
 
-  const goldMomentum = percentageChange(gold?.points ?? null);
   const dollarChange = percentageChange(dollar?.points ?? null);
   const realYieldChange = periodChange(realYields?.points ?? null);
   const dollarImpact = impactFromChange(dollarChange, -1, 0.75);
   const realYieldImpact = impactFromChange(realYieldChange, -1, 0.1);
+  const quoteInputs = {
+    gold: quoteDependency("gold", "Yahoo Finance · GC=F", gold, 10),
+    silver: quoteDependency("silver", "Yahoo Finance · SI=F", silver, 10),
+    oil: quoteDependency("oil", "Yahoo Finance · CL=F", oil, 10),
+    sp500: quoteDependency("sp500", "Yahoo Finance · ^GSPC", sp500, 10),
+    copper: quoteDependency("copper", "Yahoo Finance · HG=F", copper, 10),
+  };
+  const ratioInputs: Record<string, DerivedDependency[]> = {
+    "gold-sp": [quoteInputs.gold, quoteInputs.sp500],
+    "gold-oil": [quoteInputs.gold, quoteInputs.oil],
+    "gold-silver": [quoteInputs.gold, quoteInputs.silver],
+    "copper-gold": [quoteInputs.copper, quoteInputs.gold],
+  };
 
   if (metal === "copper") {
     const copperChange = percentageChange(copper?.points ?? null);
@@ -413,7 +425,7 @@ async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil",
           comparison: { label: t.fiveYearAverage, value: copperGoldAverage === null ? "—" : number(copperGoldAverage, locale, 5) },
           chart: { points: lastYearPoints(copperHistory), unit: "", digits: 5, label: chartLabel, zeroBaseline: false },
         }),
-      ],
+      ].map((card) => ratioInputs[card.id] ? protectDerivedCard(card, ratioInputs[card.id], locale) : card),
       source: t.copperSource,
     };
   }
@@ -427,31 +439,14 @@ async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil",
   const goldSpCurrent = gold && sp500 ? gold.current / sp500.current : null;
   const goldOilCurrent = gold && oil ? gold.current / oil.current : null;
   const goldSilverCurrent = gold && silver ? gold.current / silver.current : null;
-  const score = stressScore(goldMomentum, realYieldChange, dollarChange);
-  const previousTime = Math.min(
-    gold?.points.at(-1)?.time ?? Infinity,
-    dollar?.points.at(-1)?.time ?? Infinity,
-    realYields?.points.at(-1)?.time ?? Infinity,
-  ) - 90 * 86400;
-  const previousStress = Number.isFinite(previousTime)
-    ? stressScore(
-        (() => {
-          const current = valueAt(gold?.points ?? [], previousTime);
-          const previous = valueAt(gold?.points ?? [], previousTime - 90 * 86400);
-          return current && previous ? ((current - previous) / previous) * 100 : null;
-        })(),
-        (() => {
-          const current = valueAt(realYields?.points ?? [], previousTime);
-          const previous = valueAt(realYields?.points ?? [], previousTime - 90 * 86400);
-          return current !== null && previous !== null ? current - previous : null;
-        })(),
-        (() => {
-          const current = valueAt(dollar?.points ?? [], previousTime);
-          const previous = valueAt(dollar?.points ?? [], previousTime - 90 * 86400);
-          return current && previous ? ((current - previous) / previous) * 100 : null;
-        })(),
-      )
-    : null;
+  const stressInputs: DerivedDependency[] = [
+    { id: "gold", source: "Yahoo Finance · GC=F", points: gold?.points ?? [], maxAgeDays: 10 },
+    { id: "dxy", source: "Yahoo Finance · DX-Y.NYB", points: dollar?.points ?? [], maxAgeDays: 10 },
+    { id: "real-rates", source: "FRED / U.S. Treasury · DFII10", points: realYields?.points ?? [], maxAgeDays: 5 },
+  ];
+  const stressState = currentStressIndex(stressInputs);
+  const score = stressState.score;
+  const previousStress = stressState.asOf === null ? null : stressIndexAt(stressInputs, stressState.asOf - 90 * 86400);
   const scoreTrend = score === null || previousStress === null ? "unavailable" : trend(score - previousStress, 4);
   const goldChart = lastYearPoints(gold?.points ?? []);
   const dollarChart = lastYearPoints(dollar?.points ?? []);
@@ -459,19 +454,8 @@ async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil",
   const goldSpChart = metal === "gold" ? lastTenYearPoints(goldSpHistory) : lastYearPoints(goldSpHistory);
   const goldOilChart = metal === "gold" ? lastTenYearPoints(goldOilHistory) : lastYearPoints(goldOilHistory);
   const goldSilverChart = metal === "gold" ? lastTenYearPoints(goldSilverHistory) : lastYearPoints(goldSilverHistory);
-  const stressChart: IndicatorChartPoint[] = goldChart.flatMap(({ time }) => {
-    const currentGold = valueAt(gold?.points ?? [], time);
-    const earlierGold = valueAt(gold?.points ?? [], time - 90 * 86400);
-    const currentRates = valueAt(realYields?.points ?? [], time);
-    const earlierRates = valueAt(realYields?.points ?? [], time - 90 * 86400);
-    const currentDollar = valueAt(dollar?.points ?? [], time);
-    const earlierDollar = valueAt(dollar?.points ?? [], time - 90 * 86400);
-    if (!currentGold || !earlierGold || currentRates === null || earlierRates === null || !currentDollar || !earlierDollar) return [];
-    const value = stressScore(
-      ((currentGold - earlierGold) / earlierGold) * 100,
-      currentRates - earlierRates,
-      ((currentDollar - earlierDollar) / earlierDollar) * 100,
-    );
+  const stressChart: IndicatorChartPoint[] = goldChart.filter((point) => point.time <= stressState.health.checkedAt).flatMap(({ time }) => {
+    const value = stressIndexAt(stressInputs, time);
     return value === null ? [] : [{ time, value }];
   });
   const severity = score === null
@@ -498,8 +482,8 @@ async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil",
     score === null ? "—" : `${score}/100`,
     scoreTrend,
     stressImpact,
-    t.explanations.stress,
-    { score: score ?? undefined, severity, chart: { points: lastYearPoints(stressChart), unit: "", digits: 0, label: chartLabel, zeroBaseline: true } },
+    score === null ? t.derivedUnavailable : t.explanations.stress,
+    { score: score ?? undefined, severity, dataHealth: stressState.health, chart: { points: lastYearPoints(stressChart), unit: "", digits: 0, label: chartLabel, zeroBaseline: true } },
   );
 
   if (metal === "silver") {
@@ -517,7 +501,7 @@ async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil",
         { ...realRateCard, id: "live-real-rates", group: "context" as const },
         { ...dxyCard, id: "live-dxy", group: "context" as const },
         { ...stressCard, group: "context" as const },
-      ],
+      ].map((card) => ratioInputs[card.id] ? protectDerivedCard(card, ratioInputs[card.id], locale) : card),
       source: t.source,
     };
   }
@@ -581,7 +565,7 @@ async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil",
           zeroBaseline: true,
         },
       }),
-    ],
+    ].map((card) => ratioInputs[card.id] ? protectDerivedCard(card, ratioInputs[card.id], locale) : card),
     source: t.source,
   };
 }
@@ -654,7 +638,10 @@ async function getOilIndicators(locale: Locale) {
         provenance: `Yahoo Finance (GC=F, CL=F) · ${turkish ? "Eşleşen kapanış" : "Matched close"}: ${date(latestRatio?.time)}${stale(latestRatio?.time, 5)}`,
         chart: { points: ratioChart, unit: "", digits: 1, label: chartLabel, zeroBaseline: false },
       }),
-    ],
+    ].map((card) => card.id === "oil-gold-ratio" ? protectDerivedCard(card, [
+      quoteDependency("gold", "Yahoo Finance · GC=F", gold, 5),
+      quoteDependency("wti", "Yahoo Finance · CL=F", wti, 5),
+    ], locale) : card),
     source: turkish ? "Vadeli işlem fiyatları gecikmeli olabilir; spot fiyat değildir." : "Futures quotes may be delayed and are not spot prices.",
   };
 }

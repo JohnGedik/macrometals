@@ -8,10 +8,17 @@ export type IndicatorDataHealth = {
   status: "sample" | "fresh" | "stale" | "unavailable";
   source: string;
   url?: string;
-  frequency: "annual" | "daily" | "weekly" | "monthly" | "unknown";
+  frequency: "annual" | "daily" | "weekly" | "monthly" | "derived" | "unknown";
   observedAt: number | null;
   checkedAt: number;
   maxAgeDays?: number;
+  dependencies?: {
+    id: string;
+    source: string;
+    observedAt: number | null;
+    status: "fresh" | "stale" | "unavailable";
+    maxAgeDays: number;
+  }[];
 };
 
 export type CommodityIndicatorConfig = {

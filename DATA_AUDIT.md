@@ -8,7 +8,15 @@ The application now has a fail-closed public scoring policy addressing F01: samp
 
 No input approvals were granted by this change. All current public allowlists are empty, so all four aggregates, their confidence ratings and market narratives are withheld pending actual data approval and sufficient coverage. Reference observations/charts and their source/sample status remain visible. Regression tests cover sample-value poisoning, missing approval, insufficient coverage, absent critical factors and withheld public outputs.
 
-The findings and inventory below record the audit baseline before this follow-up. F02-F08, provider permissions, source replacement and predictive validation are not resolved by the F01 implementation. No production-data certification is implied.
+The findings and inventory below record the audit baseline before these follow-ups. F02 and F04-F08, provider permissions, source replacement and predictive validation are not resolved by F01. F03 is addressed in the separate implementation follow-up below. No production-data certification is implied.
+
+## F03 Implementation Follow-Up
+
+Derived context health now records required input dates/statuses and propagates stale or unavailable dependencies rather than inferring freshness from the latest output/chart date. Gold/Silver/Copper ratios check both source quotes and aligned historical observations; Oil's Gold/WTI ratio uses the same guard with its daily-data allowance. Unhealthy current values and impact labels are suppressed, while historical reference charts remain explicitly non-current evidence.
+
+Silver's stress index uses a common as-of date and age-bounded current/90-day reference lookups. The age of the actual component observations used at that date is also checked against the request time. Gold/DXY weekly histories permit at most ten days of carry-forward, FRED daily yields five days. Historical chart points use the same bounded calculation at each point's date; future inputs and long gaps cannot be used to fabricate recent points. Dependency dates/statuses are visible in a collapsible Data Health section. This evaluator accepts valid zero/negative real yields; the unrelated legacy `periodChange` helper in F05 remains a separate issue.
+
+Regression coverage includes the original 101-day-old-yield failure, missing FRED data, stale Gold data, future-only inputs, missing historical references, actual common-date selection, and fresh quote metadata over stale aligned ratio history. The existing public score approval gates remain unchanged; no datasets were newly approved or certified.
 
 ## Decision
 

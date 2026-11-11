@@ -619,6 +619,11 @@ textarea:focus-visible {
 .indicator-data-health dd { min-width: 0; margin: 0; color: var(--ink-soft); overflow-wrap: anywhere; }
 .indicator-data-health a { text-decoration: underline; text-underline-offset: 2px; }
 .indicator-health-note { margin: 7px 0 0; color: var(--muted); font-size: 9px; line-height: 1.5; }
+.indicator-health-dependencies { margin-top: 8px; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.indicator-health-dependencies summary { cursor: pointer; }
+.indicator-health-dependencies p { margin: 6px 0; }
+.indicator-health-dependencies ul { display: grid; gap: 7px; padding: 0; margin: 7px 0 0; list-style: none; }
+.indicator-health-dependencies li { display: grid; gap: 2px; overflow-wrap: anywhere; }
 
 .whats-changed-card { margin: 16px 0; padding: 16px; border: 1px solid var(--line); background: var(--paper-light); }
 .whats-changed-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
