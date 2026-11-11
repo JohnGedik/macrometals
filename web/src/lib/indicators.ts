@@ -3,7 +3,7 @@ import { getOilInventory } from "@/lib/oil-inventory";
 
 type Point = { time: number; value: number };
 export type IndicatorChartPoint = Point & { label?: string };
-type Series = { current: number; points: Point[]; currentTime?: number };
+type Series = { current: number; points: Point[]; currentTime?: number; highs?: Point[]; lows?: Point[] };
 type Impact = "bullish" | "neutral" | "bearish" | "unavailable";
 type Trend = "up" | "down" | "flat" | "unavailable";
 
@@ -24,12 +24,24 @@ export type IndicatorCardData = {
   chart?: { points: IndicatorChartPoint[]; unit: string; digits: number; label: string; zeroBaseline: boolean };
 };
 
+export type CommodityKey = "gold" | "silver" | "oil" | "copper";
+export type CommodityHeaderData = {
+  price: number | null;
+  dailyChange: number | null;
+  oneYearReturn: number | null;
+  high52Week: number | null;
+  low52Week: number | null;
+  observedAt: number | null;
+  unit: string;
+  points: IndicatorChartPoint[];
+};
+
 type MarketResponse = {
   chart?: {
     result?: Array<{
       meta?: { regularMarketPrice?: number; regularMarketTime?: number };
       timestamp?: number[];
-      indicators?: { quote?: Array<{ close?: Array<number | null> }> };
+      indicators?: { quote?: Array<{ close?: Array<number | null>; high?: Array<number | null>; low?: Array<number | null> }> };
     }>;
   };
 };
@@ -38,9 +50,9 @@ function finite(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
-async function getMarketSeries(symbol: string, interval = "1wk"): Promise<Series | null> {
+async function getMarketSeries(symbol: string, interval = "1wk", range = "5y"): Promise<Series | null> {
   try {
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=5y&interval=${interval}`;
+    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`;
     const response = await fetch(url, {
       headers: { "User-Agent": "Mozilla/5.0" },
       next: { revalidate: 900 },
@@ -51,16 +63,19 @@ async function getMarketSeries(symbol: string, interval = "1wk"): Promise<Series
     const payload = (await response.json()) as MarketResponse;
     const result = payload.chart?.result?.[0];
     const timestamps = result?.timestamp ?? [];
-    const closes = result?.indicators?.quote?.[0]?.close ?? [];
+    const quote = result?.indicators?.quote?.[0];
+    const closes = quote?.close ?? [];
     const points = timestamps.flatMap((time, index) => {
       const value = closes[index];
       return finite(value) ? [{ time, value }] : [];
     });
+    const highs = timestamps.flatMap((time, index) => finite(quote?.high?.[index]) ? [{ time, value: quote!.high![index]! }] : []);
+    const lows = timestamps.flatMap((time, index) => finite(quote?.low?.[index]) ? [{ time, value: quote!.low![index]! }] : []);
     const current = finite(result?.meta?.regularMarketPrice)
       ? result.meta.regularMarketPrice
       : points.at(-1)?.value;
 
-    return finite(current) && points.length ? { current, points, currentTime: finite(result?.meta?.regularMarketTime) ? result.meta.regularMarketTime : undefined } : null;
+    return finite(current) && points.length ? { current, points, currentTime: finite(result?.meta?.regularMarketTime) ? result.meta.regularMarketTime : undefined, highs, lows } : null;
   } catch {
     return null;
   }
@@ -475,5 +490,37 @@ async function getOilIndicators(locale: Locale) {
       }),
     ],
     source: turkish ? "Vadeli işlem fiyatları gecikmeli olabilir; spot fiyat değildir." : "Futures quotes may be delayed and are not spot prices.",
+  };
+}
+
+const commoditySpecs: Record<CommodityKey, { symbol: string; unit: string }> = {
+  gold: { symbol: "GC=F", unit: "oz" },
+  silver: { symbol: "SI=F", unit: "oz" },
+  oil: { symbol: "CL=F", unit: "bbl" },
+  copper: { symbol: "HG=F", unit: "lb" },
+};
+
+export async function getCommodityHeaderData(commodity: CommodityKey): Promise<CommodityHeaderData> {
+  const spec = commoditySpecs[commodity];
+  const series = await getMarketSeries(spec.symbol, "1d", "1y");
+  if (!series) return { price: null, dailyChange: null, oneYearReturn: null, high52Week: null, low52Week: null, observedAt: null, unit: spec.unit, points: [] };
+
+  const last = series.points.at(-1);
+  const previous = series.points.at(-2);
+  const first = series.points[0];
+  const dailyChange = previous && previous.value !== 0 ? ((series.current - previous.value) / previous.value) * 100 : null;
+  const oneYearReturn = first && first.value !== 0 ? ((series.current - first.value) / first.value) * 100 : null;
+  const high52Week = series.highs?.length ? Math.max(...series.highs.map((point) => point.value)) : last?.value ?? null;
+  const low52Week = series.lows?.length ? Math.min(...series.lows.map((point) => point.value)) : last?.value ?? null;
+
+  return {
+    price: series.current,
+    dailyChange,
+    oneYearReturn,
+    high52Week,
+    low52Week,
+    observedAt: series.currentTime ?? last?.time ?? null,
+    unit: spec.unit,
+    points: series.points,
   };
 }

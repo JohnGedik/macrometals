@@ -160,6 +160,16 @@ export const messages = {
       file: "Topic file",
       description: "Analysis connected to {topic} and the forces around it.",
     },
+    commodityHeader: {
+      currentPrice: "Current price",
+      dailyChange: "Daily change",
+      oneYearReturn: "1-year return",
+      high52Week: "52-week high",
+      low52Week: "52-week low",
+      chartLabel: "1-year daily price history",
+      unavailable: "Market data unavailable",
+      observed: "As of",
+    },
     author: {
       contributors: "Contributors",
       author: "Author",
@@ -487,6 +497,16 @@ export const messages = {
     topic: {
       file: "Konu dosyası",
       description: "{topic} ve ilişkili güçler üzerine analizler.",
+    },
+    commodityHeader: {
+      currentPrice: "Güncel fiyat",
+      dailyChange: "Günlük değişim",
+      oneYearReturn: "1 yıllık getiri",
+      high52Week: "52 haftalık en yüksek",
+      low52Week: "52 haftalık en düşük",
+      chartLabel: "1 yıllık günlük fiyat geçmişi",
+      unavailable: "Piyasa verisi alınamadı",
+      observed: "Veri tarihi",
     },
     author: {
       contributors: "Yazarlar",

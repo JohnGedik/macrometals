@@ -2137,6 +2137,100 @@ textarea:focus-visible {
   font-variant-numeric: tabular-nums;
 }
 
+.commodity-header {
+  display: grid;
+  grid-template-columns: minmax(270px, 0.85fr) minmax(0, 1.15fr);
+  align-items: center;
+  gap: clamp(24px, 5vw, 64px);
+  margin: 18px 0 34px;
+  padding: 26px 0 30px;
+  border-bottom: 1px solid var(--line);
+}
+
+.commodity-header-overview > .eyebrow {
+  margin: 0 0 5px;
+}
+
+.commodity-header h1 {
+  margin: 0;
+  color: var(--ink);
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(42px, 5vw, 62px);
+  font-weight: 500;
+  line-height: 1.02;
+}
+
+.commodity-header .listing-intro {
+  margin: 9px 0 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.commodity-current-price {
+  display: block;
+  margin-top: 21px;
+  color: var(--ink);
+  font-family: var(--font-display), Georgia, serif;
+  font-size: 30px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.15;
+}
+
+.commodity-metrics {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px 22px;
+  margin: 21px 0 0;
+}
+
+.commodity-metrics > div {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.commodity-metrics dt,
+.commodity-observed {
+  color: var(--muted);
+  font-size: 10px;
+}
+
+.commodity-metrics dd {
+  margin: 0;
+  color: var(--ink-soft);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.commodity-metrics .metric-positive dd { color: #39745e; }
+.commodity-metrics .metric-negative dd { color: #bd5a43; }
+
+.commodity-observed {
+  margin: 16px 0 0;
+}
+
+.commodity-header-chart {
+  width: 100%;
+  height: 224px;
+  min-width: 0;
+}
+
+.commodity-chart-tooltip {
+  display: grid;
+  gap: 3px;
+  padding: 8px 10px;
+  border: 1px solid var(--line);
+  background: var(--paper-light);
+  color: var(--ink-soft);
+  box-shadow: 0 3px 12px rgb(28 41 36 / 12%);
+  font-size: 10px;
+}
+
+.commodity-chart-tooltip strong { color: var(--ink); font-variant-numeric: tabular-nums; }
+.commodity-unavailable { color: var(--muted); font-size: 12px; }
+
 @keyframes rise-in {
   from {
     transform: translateY(12px);
@@ -2186,6 +2280,13 @@ textarea:focus-visible {
   .indicator-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .commodity-header {
+    grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.1fr);
+    gap: 20px;
+  }
+
+  .commodity-header-chart { height: 190px; }
 
   .share-actions {
     position: static;
@@ -2346,6 +2447,15 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
     gap: 10px;
   }
+
+  .commodity-header {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
+    margin-top: 10px;
+    padding-top: 18px;
+  }
+
+  .commodity-header-chart { height: 160px; }
 
   .macro-methodology-content {
     grid-template-columns: 1fr;
