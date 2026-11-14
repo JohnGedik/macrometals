@@ -2,26 +2,62 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { registerHooks } from "node:module";
 import { classifyPriceRelationship } from "./price-relationship.ts";
-import { calculateCommodityChanges, commodityChangesInput, rankCommodityChanges } from "./commodity-changes.ts";
+
+process.env.SOURCE_ARCHIVE_ENABLED = "false";
+process.env.YAHOO_FINANCE_AUTOMATED_ACCESS_CONFIRMED = "true";
+process.env.MARKET_DATA_PUBLIC_DISTRIBUTION_CONFIRMED = "true";
+process.env.FRED_M2SL_PUBLIC_USE_CONFIRMED = "true";
+process.env.FRED_T5YIE_PUBLIC_USE_CONFIRMED = "true";
+process.env.FRED_DFII10_PUBLIC_USE_CONFIRMED = "true";
+process.env.FRED_DTWEXBGS_PUBLIC_USE_CONFIRMED = "true";
+process.env.FRED_API_KEY = "test-api-key";
+process.env.WGC_CENTRAL_BANK_GOLD_PUBLIC_USE_CONFIRMED = "false";
+process.env.WGC_GOLD_ETF_PUBLIC_USE_CONFIRMED = "false";
+process.env.GPR_CI_PUBLIC_USE_CONFIRMED = "false";
 
 const aliases = registerHooks({
   resolve(specifier, context, nextResolve) {
+    if (specifier === "server-only") {
+      return nextResolve(new URL("./server-only.stub.mjs", import.meta.url).href, context);
+    }
     if (specifier.startsWith("@/")) {
       return nextResolve(new URL(`${specifier.slice(2)}.ts`, new URL("../", import.meta.url)).href, context);
     }
     return nextResolve(specifier, context);
   },
 });
+const { calculateCommodityChanges, commodityChangesInput, rankCommodityChanges } = await import("./commodity-changes.ts");
 const { scoreCommodity } = await import("./commodity-score.ts");
 const { commodityConfigurations, getCommodityConfiguration } = await import("./commodity-config.ts");
 const { getMacroIndicators, getCommodityHeaderData } = await import("./indicators.ts");
 const { countActiveIndicators, generateMacroSummary } = await import("./macro-summary.ts");
 const { hydrateCommodityObservations } = await import("./commodity-data.ts");
+const { availableObservation, parseFredObservations, fredSeriesDefinitions, monthlyPeriodIsRecent } = await import("./observation-data.ts");
+const { createSourceSnapshot, verifySourceSnapshot, snapshotChanges, snapshotKnownAt } = await import("./source-snapshots.ts");
+const { archiveSourceSnapshot, archivedSnapshotKnownAt } = await import("./snapshot-archive.ts");
+const { latestH6Release, compareH6Release } = await import("./release-evidence.ts");
+const { getSourceRights } = await import("./source-rights.ts");
+const { parseCftcGoldManagedMoney, cftcGoldCotSeriesId } = await import("./cftc-cot.ts");
+const { parseRecentGprRows, gprSeriesId, gprDownloadUrl } = await import("./gpr.ts");
+const XLSX = await import("@e965/xlsx");
+const { currentGoldSeasonality, goldSeasonalityProfile } = await import("./gold-macro-data.ts");
 const { derivedDataHealth, currentStressIndex, stressIndexAt } = await import("./derived-data.ts");
 const { normalizeDashboardPreference, readDashboardPreference, writeDashboardPreference } = await import("./dashboard-preferences.ts");
 aliases.deregister();
 
 const researchPolicy = { mode: "research", minimumCoverage: 0, requiredIndicators: [], approvedIndicators: [] };
+
+function fredResponse(seriesId, observations) {
+  return Response.json({ observations: observations.map(([date, value]) => ({ date, value: String(value) })) });
+}
+
+function withoutWgcSources(config) {
+  return {
+    ...config,
+    scoreSources: Object.fromEntries(Object.entries(config.scoreSources ?? {})
+      .filter(([id]) => !["central-bank-purchases", "etf-holdings"].includes(id))),
+  };
+}
 
 function fixture(changes, weights = changes.map(() => 100 / changes.length)) {
   const indicators = changes.map((change, index) => ({ id: `factor-${index}`, changeKind: "percentage", values: [100, 100 + change] }));
@@ -95,17 +131,50 @@ test("coverage and critical-factor gates withhold totals and driver contribution
   assert.equal(scoreCommodity(publicFixture()).publishable, true);
 });
 
-test("every registered public commodity is sourced-only and awaiting approval", () => {
+test("registered public commodities approve only explicitly cleared Gold factors", () => {
   for (const config of Object.values(commodityConfigurations)) {
     const result = scoreCommodity(config);
     assert.equal(result.policy.mode, "sourced-only");
     assert.equal(result.policy.minimumCoverage, 80);
     assert.ok(result.policy.requiredIndicators.length > 0);
-    assert.deepEqual(result.policy.approvedIndicators, []);
+    assert.deepEqual(result.policy.approvedIndicators, config.commodity === "gold"
+      ? ["gold-seasonality", "real-rates", "dxy", "breakeven", "central-bank-purchases", "etf-holdings", "cot-positioning"] : []);
     assert.equal(result.score, null);
-    assert.equal(result.coverage, 0);
-    assert.ok(result.indicators.every((indicator) => indicator.score === null));
+    assert.equal(result.coverage, config.commodity === "gold" ? 5 : 0);
+    assert.ok(result.indicators.filter((indicator) => indicator.id !== "gold-seasonality").every((indicator) => indicator.score === null));
+    if (config.commodity === "gold") assert.ok(result.indicators.find((indicator) => indicator.id === "gold-seasonality").score !== null);
   }
+});
+
+test("gold seasonality is a five-percent Tier 1 factor scored from the current month's return", async () => {
+  const config = commodityConfigurations.gold;
+  const seasonality = config.indicators.find((indicator) => indicator.id === "gold-seasonality");
+  assert.equal(config.weights["real-rates"], 25);
+  assert.equal(config.weights.dxy, 10);
+  assert.equal(config.weights.breakeven, 10);
+  assert.equal(config.weights["gold-seasonality"], 5);
+  assert.equal(seasonality.tier, 1);
+  assert.equal(seasonality.scoreMode, "level");
+  assert.ok(config.scoringPolicy.requiredIndicators.includes("gold-seasonality"));
+  assert.equal(Object.values(config.weights).reduce((total, weight) => total + weight, 0), 100);
+
+  const researchConfig = { ...config, scoringPolicy: researchPolicy };
+  const scored = scoreCommodity(researchConfig).indicators.find((indicator) => indicator.id === "gold-seasonality");
+  assert.equal(scored.current, currentGoldSeasonality());
+  assert.equal(scored.previous, null);
+  assert.equal(scored.change, null);
+  assert.equal(scored.score, Math.max(0, Math.min(100, 50 + currentGoldSeasonality() / 2.5 * 50)));
+
+  const dashboard = await getMacroIndicators({ ...researchConfig, contextProvider: undefined, scoreSources: undefined }, "en");
+  const cards = dashboard.cards.filter((card) => card.id === "gold-seasonality");
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].group, "tier1");
+  assert.equal(cards[0].chart.points.length, goldSeasonalityProfile.length);
+  const monthStart = new Date();
+  monthStart.setUTCDate(1);
+  monthStart.setUTCHours(0, 0, 0, 0);
+  assert.equal(cards[0].dataHealth.status, "fresh");
+  assert.equal(cards[0].dataHealth.observedAt, monthStart.getTime() / 1000);
 });
 
 test("restricted recent changes exclude samples and unapproved source observations", () => {
@@ -121,19 +190,219 @@ test("restricted recent changes exclude samples and unapproved source observatio
   assert.deepEqual(rankCommodityChanges(input, changes, "yoy").positive.map((driver) => driver.id), ["factor-0"]);
 });
 
-test("public dashboards keep sample values as reference without score inputs or narrative", async () => {
+test("public dashboards hide samples with undocumented origins while excluding them from score and narrative", async () => {
   for (const config of Object.values(commodityConfigurations)) {
     const dashboard = await getMacroIndicators({ ...config, scoreSources: undefined, contextProvider: undefined }, "en");
     assert.equal(dashboard.summary.score, null);
-    assert.equal(dashboard.summary.coverage, 0);
-    assert.deepEqual(dashboard.summary.dataMix, { sourcedWeight: 0, sampleWeight: 0, excludedWeight: 100 });
-    assert.equal(dashboard.summary.release.approvedCount, 0);
-    assert.equal(dashboard.summary.release.referenceSampleWeight, 100);
-    assert.ok(dashboard.cards.every((card) => card.value !== "—" && card.factorScore === null && card.scoreExclusion === "sample"));
-    assert.ok(dashboard.cards.every((card) => card.explanation.includes("reference only")));
+    assert.equal(dashboard.summary.coverage, config.commodity === "gold" ? 5 : 0);
+    assert.deepEqual(dashboard.summary.dataMix, config.commodity === "gold"
+      ? { sourcedWeight: 5, sampleWeight: 0, excludedWeight: 95 }
+      : { sourcedWeight: 0, sampleWeight: 0, excludedWeight: 100 });
+    assert.equal(dashboard.summary.release.approvedCount, config.commodity === "gold" ? 7 : 0);
+    assert.equal(dashboard.summary.release.referenceSampleWeight, config.commodity === "gold" ? 95 : 100);
+    const seasonality = dashboard.cards.find((card) => card.id === "gold-seasonality");
+    const unverifiedSamples = dashboard.cards.filter((card) => card.id !== "gold-seasonality");
+    assert.ok(unverifiedSamples.every((card) => card.value === "—" && card.factorScore === null && card.scoreExclusion === "sample"));
+    assert.ok(unverifiedSamples.every((card) => card.explanation.includes("origin and reuse rights")));
+    assert.ok(unverifiedSamples.every((card) => card.chart?.points.length === 0));
+    assert.ok(unverifiedSamples.every((card) => card.dataHealth.rights?.some((rights) => rights.status === "provenance-unverified")));
+    if (seasonality) {
+      assert.equal(seasonality.group, "tier1");
+      assert.notEqual(seasonality.factorScore, null);
+      assert.equal(seasonality.scoreExclusion, null);
+      assert.equal(seasonality.chart.points.length, goldSeasonalityProfile.length);
+    }
     assert.deepEqual(dashboard.summary.positiveDrivers, []);
     assert.deepEqual(dashboard.summary.negativeDrivers, []);
     assert.throws(() => generateMacroSummary({ ...summaryFixture(50), score: dashboard.summary.score }, "en"), /Invalid/);
+  }
+});
+
+test("Gold dashboard hydrates reported central-bank changes and global ETF holdings from WGC data", async () => {
+  const previousCentralBankFlag = process.env.WGC_CENTRAL_BANK_GOLD_PUBLIC_USE_CONFIRMED;
+  const previousEtfFlag = process.env.WGC_GOLD_ETF_PUBLIC_USE_CONFIRMED;
+  process.env.WGC_CENTRAL_BANK_GOLD_PUBLIC_USE_CONFIRMED = "true";
+  process.env.WGC_GOLD_ETF_PUBLIC_USE_CONFIRMED = "true";
+  const config = {
+    ...commodityConfigurations.gold,
+    contextProvider: undefined,
+    scoreSources: {
+      "central-bank-purchases": "wgc-central-bank",
+      "etf-holdings": "wgc-etf-holdings",
+    },
+  };
+  try {
+    const dashboard = await getMacroIndicators(config, "en");
+    const centralBank = dashboard.config.indicators.find((indicator) => indicator.id === "central-bank-purchases");
+    const etfHoldings = dashboard.config.indicators.find((indicator) => indicator.id === "etf-holdings");
+
+    assert.equal(centralBank.dataHealth.status, "fresh");
+    assert.equal(centralBank.dataHealth.reportingPeriod.label, "2026-09");
+    assert.equal(centralBank.dataHealth.provenance.measurement, "flow");
+    assert.ok(Number.isFinite(centralBank.observations.at(-1).value));
+    assert.equal(etfHoldings.dataHealth.status, "fresh");
+    assert.equal(etfHoldings.dataHealth.reportingPeriod.label, "2026-10");
+    assert.equal(etfHoldings.dataHealth.provenance.measurement, "stock");
+    assert.equal(etfHoldings.observations.at(-1).value, 4275.06069819);
+    assert.notEqual(dashboard.cards.find((card) => card.id === "central-bank-purchases").value, "—");
+    assert.notEqual(dashboard.cards.find((card) => card.id === "etf-holdings").value, "—");
+  } finally {
+    process.env.WGC_CENTRAL_BANK_GOLD_PUBLIC_USE_CONFIRMED = previousCentralBankFlag;
+    process.env.WGC_GOLD_ETF_PUBLIC_USE_CONFIRMED = previousEtfFlag;
+  }
+});
+
+test("WGC public-use flags fail closed for both dashboard series", async () => {
+  const previousCentralBankFlag = process.env.WGC_CENTRAL_BANK_GOLD_PUBLIC_USE_CONFIRMED;
+  const previousEtfFlag = process.env.WGC_GOLD_ETF_PUBLIC_USE_CONFIRMED;
+  process.env.WGC_CENTRAL_BANK_GOLD_PUBLIC_USE_CONFIRMED = "false";
+  process.env.WGC_GOLD_ETF_PUBLIC_USE_CONFIRMED = "false";
+  try {
+    const config = {
+      ...commodityConfigurations.gold,
+      contextProvider: undefined,
+      scoreSources: {
+        "central-bank-purchases": "wgc-central-bank",
+        "etf-holdings": "wgc-etf-holdings",
+      },
+    };
+    const dashboard = await getMacroIndicators(config, "en");
+    const cards = dashboard.cards.filter((card) => ["central-bank-purchases", "etf-holdings"].includes(card.id));
+    assert.equal(cards.length, 2);
+    assert.ok(cards.every((card) => card.value === "—" && card.dataHealth.status === "unavailable"));
+    assert.ok(cards.every((card) => card.chart.points.length === 0));
+  } finally {
+    process.env.WGC_CENTRAL_BANK_GOLD_PUBLIC_USE_CONFIRMED = previousCentralBankFlag;
+    process.env.WGC_GOLD_ETF_PUBLIC_USE_CONFIRMED = previousEtfFlag;
+  }
+});
+
+test("CFTC Gold COT parser calculates weekly Managed Money net contracts", () => {
+  const retrievedAt = Date.parse("2026-11-14T12:00:00Z") / 1000;
+  const observations = parseCftcGoldManagedMoney([
+    { cftc_contract_market_code: "088691", report_date_as_yyyy_mm_dd: "2026-11-03T00:00:00.000", m_money_positions_long_all: "122283", m_money_positions_short_all: "18669" },
+    { cftc_contract_market_code: "088691", report_date_as_yyyy_mm_dd: "2025-10-28T00:00:00.000", m_money_positions_long_all: "100000", m_money_positions_short_all: "20000" },
+  ], retrievedAt);
+  assert.deepEqual(observations.map((point) => point.value), [80, 103.614]);
+  assert.equal(observations.at(-1).reportingPeriod.frequency, "weekly");
+  assert.equal(observations.at(-1).provenance.seriesId, cftcGoldCotSeriesId);
+  assert.equal(observations.at(-1).provenance.rawUnit, "contracts");
+  assert.deepEqual(parseCftcGoldManagedMoney([
+    { cftc_contract_market_code: "088691", report_date_as_yyyy_mm_dd: "2026-11-03", m_money_positions_long_all: "not-a-number", m_money_positions_short_all: "1" },
+  ], retrievedAt), []);
+});
+
+test("Gold dashboard uses the approved CFTC COT feed as a sourced score factor", async () => {
+  const originalFetch = globalThis.fetch;
+  const previousFlag = process.env.CFTC_COT_GOLD_PUBLIC_USE_CONFIRMED;
+  process.env.CFTC_COT_GOLD_PUBLIC_USE_CONFIRMED = "true";
+  const latestDate = new Date();
+  latestDate.setUTCHours(0, 0, 0, 0);
+  latestDate.setUTCDate(latestDate.getUTCDate() - (latestDate.getUTCDay() + 5) % 7);
+  const priorDate = new Date(latestDate);
+  priorDate.setUTCDate(priorDate.getUTCDate() - 371);
+  const formatDate = (date) => date.toISOString().slice(0, 10);
+  let fetchCount = 0;
+  globalThis.fetch = async (raw) => {
+    const url = new URL(String(raw));
+    assert.equal(url.hostname, "publicreporting.cftc.gov");
+    assert.equal(url.pathname, "/resource/72hh-3qpy.json");
+    assert.ok(url.searchParams.get("$where").includes("088691"));
+    assert.equal(url.searchParams.get("$limit"), "650");
+    fetchCount += 1;
+    return Response.json([
+      { cftc_contract_market_code: "088691", report_date_as_yyyy_mm_dd: `${formatDate(latestDate)}T00:00:00.000`, m_money_positions_long_all: "123456", m_money_positions_short_all: "20000" },
+      { cftc_contract_market_code: "088691", report_date_as_yyyy_mm_dd: `${formatDate(priorDate)}T00:00:00.000`, m_money_positions_long_all: "100000", m_money_positions_short_all: "20000" },
+    ]);
+  };
+  try {
+    const config = {
+      ...commodityConfigurations.gold,
+      contextProvider: undefined,
+      scoreSources: { "cot-positioning": "cftc-gold-cot" },
+    };
+    const dashboard = await getMacroIndicators(config, "en");
+    const cot = dashboard.cards.find((card) => card.id === "cot-positioning");
+    assert.equal(fetchCount, 1);
+    assert.equal(cot.value, "103k");
+    assert.equal(cot.dataHealth.status, "fresh");
+    assert.equal(cot.dataHealth.frequency, "weekly");
+    assert.equal(cot.dataHealth.freshnessBasis, "reporting-lag");
+    assert.equal(cot.factorScore, 100);
+    assert.equal(cot.scoreExclusion, null);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousFlag === undefined) delete process.env.CFTC_COT_GOLD_PUBLIC_USE_CONFIRMED;
+    else process.env.CFTC_COT_GOLD_PUBLIC_USE_CONFIRMED = previousFlag;
+  }
+});
+
+function excelMonthSerial(year, month) {
+  return (Date.UTC(year, month - 1, 1) - Date.UTC(1899, 11, 30)) / 86_400_000;
+}
+
+function gprWorksheetRows(latestValue = 150.5) {
+  const latest = new Date();
+  latest.setUTCDate(1);
+  latest.setUTCMonth(latest.getUTCMonth() - 1);
+  const prior = new Date(latest);
+  prior.setUTCFullYear(prior.getUTCFullYear() - 1);
+  const monthSerial = (date) => excelMonthSerial(date.getUTCFullYear(), date.getUTCMonth() + 1);
+  return [
+    ["month", "GPR", "GPRT", "var_name", "var_label"],
+    [1, null, null, "GPR", "Recent GPR (Index: 1985:2019=100)"],
+    [32, null, null, "GPRT", "Recent GPR Threats (Index: 1985:2019=100)"],
+    [monthSerial(prior), 140, 110, null, null],
+    [monthSerial(latest), latestValue, 120, null, null],
+  ];
+}
+
+test("GPR parser selects only the monthly Recent GPR index and retains its vintage", () => {
+  const retrievedAt = Date.now() / 1000;
+  const observations = parseRecentGprRows(gprWorksheetRows(), retrievedAt);
+  assert.deepEqual(observations.map((point) => point.value), [140, 150.5]);
+  assert.equal(observations.at(-1).reportingPeriod.frequency, "monthly");
+  assert.equal(observations.at(-1).reportingPeriod.label, observations.at(-1).reportingPeriod.start.slice(0, 7));
+  assert.equal(observations.at(-1).provenance.seriesId, gprSeriesId);
+  assert.equal(observations.at(-1).provenance.vintage, new Date(retrievedAt * 1000).toISOString().slice(0, 10));
+  assert.equal(observations.at(-1).provenance.revisionStatus, "preliminary");
+  assert.equal(observations.at(-1).provenance.aggregation, "monthly-index");
+  const otherVariant = gprWorksheetRows();
+  otherVariant[1][4] = "Historical GPR Index";
+  assert.deepEqual(parseRecentGprRows(otherVariant, retrievedAt), []);
+});
+
+test("Gold and Oil hydrate the licensed GPR workbook as sourced monthly data without scoring approval", async () => {
+  const originalFetch = globalThis.fetch;
+  const previousFlag = process.env.GPR_CI_PUBLIC_USE_CONFIRMED;
+  process.env.GPR_CI_PUBLIC_USE_CONFIRMED = "true";
+  const worksheet = XLSX.utils.aoa_to_sheet(gprWorksheetRows());
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, "Sheet1");
+  const workbookBytes = XLSX.write(workbook, { type: "array", bookType: "biff8" });
+  let fetchCount = 0;
+  globalThis.fetch = async (raw, options) => {
+    assert.equal(String(raw), gprDownloadUrl);
+    assert.equal(options.cache, "no-store");
+    fetchCount += 1;
+    return new Response(workbookBytes, { headers: { "content-type": "application/vnd.ms-excel" } });
+  };
+  try {
+    for (const configuration of [commodityConfigurations.gold, commodityConfigurations.oil]) {
+      const config = { ...configuration, contextProvider: undefined, scoreSources: { "geopolitical-risk": "gpr" } };
+      const dashboard = await getMacroIndicators(config, "en");
+      const gpr = dashboard.cards.find((card) => card.id === "geopolitical-risk");
+      assert.equal(gpr.value, "151");
+      assert.equal(gpr.dataHealth.status, "fresh");
+      assert.equal(gpr.dataHealth.frequency, "monthly");
+      assert.equal(gpr.dataHealth.provenance.aggregation, "monthly-index");
+      assert.equal(gpr.scoreExclusion, "unapproved");
+    }
+    assert.equal(fetchCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousFlag === undefined) delete process.env.GPR_CI_PUBLIC_USE_CONFIRMED;
+    else process.env.GPR_CI_PUBLIC_USE_CONFIRMED = previousFlag;
   }
 });
 
@@ -186,14 +455,17 @@ test("Silver stress card propagates stale and missing dependency health through 
   const day = new Date(Date.now() - 86400000);
   day.setUTCHours(12, 0, 0, 0);
   const now = day.getTime() / 1000;
-  const offsets = [182, 92, 90, 2, 0];
+  const offsets = [182, 101, 92, 90, 8, 2, 0];
   let scenario = "fresh";
   globalThis.fetch = async (raw) => {
     const url = new URL(String(raw));
-    if (url.hostname.includes("fred")) {
+    if (url.hostname === "api.stlouisfed.org") {
       if (scenario === "missing-rates") return new Response("Unavailable", { status: 503 });
-      const shift = scenario === "stale-rates" ? 101 : 0;
-      return new Response("observation_date,DFII10\n" + offsets.map((offset, index) => `${new Date((now - (offset + shift) * 86400) * 1000).toISOString().slice(0, 10)},${[-1, -0.1, 0, 0.9, 1][index]}`).join("\n"));
+      const shift = scenario === "stale-rates" ? 101 : scenario === "delayed-rates" ? 7 : 0;
+      return fredResponse("DFII10", offsets.map((offset, index) => [
+        new Date((now - (offset + shift) * 86400) * 1000).toISOString().slice(0, 10),
+        [-1, -0.1, -0.05, 0, 0.1, 0.9, 1][index],
+      ]));
     }
     const symbol = decodeURIComponent(url.pathname.split("/").at(-1));
     const shift = scenario === "stale-gold" && symbol === "GC=F" ? 60 : 0;
@@ -206,6 +478,9 @@ test("Silver stress card propagates stale and missing dependency health through 
     assert.equal(fresh.dataHealth.status, "fresh");
     assert.notEqual(fresh.value, "—");
     assert.equal(fresh.dataHealth.dependencies.length, 3);
+    const realRates = (await dashboard()).cards.find((card) => card.id === "live-real-rates");
+    assert.equal(realRates.trend, "up");
+    assert.equal(realRates.impact, "bearish");
     scenario = "stale-rates";
     const stale = (await dashboard()).cards.find((card) => card.id === "stress-index");
     assert.equal(stale.value, "—");
@@ -213,7 +488,14 @@ test("Silver stress card propagates stale and missing dependency health through 
     assert.equal(stale.impact, "unavailable");
     assert.equal(stale.dataHealth.status, "stale");
     assert.equal(stale.dataHealth.dependencies.find((input) => input.id === "real-rates").observedAt, now - 101 * 86400);
-    assert.ok(stale.chart.points.every((point) => point.time <= now - 96 * 86400));
+    assert.ok(stale.chart.points.some((point) => point.time === now - 90 * 86400));
+    scenario = "delayed-rates";
+    const delayed = await dashboard();
+    const delayedStress = delayed.cards.find((card) => card.id === "stress-index");
+    assert.equal(delayedStress.dataHealth.status, "fresh");
+    assert.notEqual(delayedStress.value, "—");
+    assert.equal(delayedStress.dataHealth.dependencies.find((input) => input.id === "real-rates").maxAgeDays, 14);
+    assert.equal(delayed.cards.find((card) => card.id === "live-real-rates").dataHealth.status, "fresh");
     scenario = "missing-rates";
     const missing = (await dashboard()).cards.find((card) => card.id === "stress-index");
     assert.equal(missing.value, "—");
@@ -233,9 +515,9 @@ test("ratio freshness cannot be established by fresh quote metadata over stale a
   const now = Math.floor(Date.now() / 1000) - 86400;
   globalThis.fetch = async (raw) => {
     const url = new URL(String(raw));
-    if (url.hostname.includes("fred")) return new Response("observation_date,DFII10\n");
+    if (url.hostname === "api.stlouisfed.org") return new Response("Offline", { status: 503 });
     const timestamp = [now - 465 * 86400, now - 100 * 86400];
-    return Response.json({ chart: { result: [{ meta: { regularMarketPrice: 110, regularMarketTime: now }, timestamp, indicators: { quote: [{ close: [100, 110] }] } }] } });
+    return Response.json({ chart: { result: [{ meta: { regularMarketPrice: 110, regularMarketTime: now, exchangeTimezoneName: "America/New_York" }, timestamp, indicators: { quote: [{ close: [100, 110] }] } }] } });
   };
   try {
     const ids = { gold: ["gold-sp", "gold-oil", "gold-silver"], silver: ["gold-silver"], copper: ["copper-gold"], oil: ["oil-gold-ratio"] };
@@ -250,6 +532,247 @@ test("ratio freshness cannot be established by fresh quote metadata over stale a
       }
     }
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test("monthly FRED periods retain provenance and convert M2 billions to trillions", () => {
+  const checkedAt = Date.parse("2026-11-11T12:00:00Z") / 1000;
+  const points = parseFredObservations("observation_date,M2SL\n2026-09-01,23413.9\n", fredSeriesDefinitions.M2SL, checkedAt);
+  assert.equal(points.length, 1);
+  assert.ok(Math.abs(points[0].value - 23.4139) < 1e-10);
+  assert.equal(points[0].reportingPeriod.start, "2026-09-01");
+  assert.equal(points[0].reportingPeriod.end, "2026-09-30");
+  assert.equal(points[0].provenance.rawUnit, "USD billions");
+  assert.equal(points[0].provenance.normalizedUnit, "USD trillions");
+  assert.equal(points[0].provenance.publishedAt, null);
+  assert.equal(points[0].provenance.vintage, null);
+  assert.equal(monthlyPeriodIsRecent(points[0], checkedAt, 2), true);
+  assert.equal(monthlyPeriodIsRecent(points[0], Date.parse("2026-12-01") / 1000, 2), false);
+});
+
+test("FRED DTWEXBGS parses as a daily broad-dollar index rather than a rate", () => {
+  const checkedAt = Date.parse("2026-11-11T12:00:00Z") / 1000;
+  const points = parseFredObservations("observation_date,DTWEXBGS\n2026-11-06,121.8803\n", fredSeriesDefinitions.DTWEXBGS, checkedAt);
+  assert.equal(points.length, 1);
+  assert.equal(points[0].value, 121.8803);
+  assert.equal(points[0].provenance.measurement, "index");
+  assert.equal(points[0].provenance.normalizedUnit, "index points");
+  assert.equal(points[0].provenance.seasonalAdjustment, "NSA");
+});
+
+test("monthly changes match reporting months, including unequal month ends", () => {
+  const checkedAt = Date.parse("2025-10-10") / 1000;
+  const points = parseFredObservations("observation_date,M2SL\n2024-09-01,10000\n2025-06-01,11000\n2025-08-01,11500\n2025-09-01,12000\n", fredSeriesDefinitions.M2SL, checkedAt);
+  const current = points.at(-1);
+  const input = { ...changesFixture(), currentValues: { demand: current }, historicalValues: { demand: points } };
+  const result = calculateCommodityChanges(input)[0].changes;
+  assert.ok(Math.abs(result.monthly - 0.5 / 11.5 * 100) < 1e-8);
+  assert.ok(Math.abs(result.quarterly - 1 / 11 * 100) < 1e-8);
+  assert.equal(result.yoy, 20);
+  input.historicalValues.demand = points.filter((point) => point.reportingPeriod.start !== "2025-08-01");
+  assert.equal(calculateCommodityChanges(input)[0].changes.monthly, null);
+});
+
+test("FRED parsing rejects mismatched series, bad dates, forecasts and conflicting rows", () => {
+  const checkedAt = Date.parse("2026-11-11") / 1000;
+  assert.deepEqual(parseFredObservations("observation_date,T10YIE\n2026-11-01,2\n", fredSeriesDefinitions.T5YIE, checkedAt), []);
+  assert.deepEqual(parseFredObservations("observation_date,M2SL\n2026-02-30,1\n2026-11-01,2\n2027-01-01,3\n2026-09-01,.\n", fredSeriesDefinitions.M2SL, checkedAt), []);
+  assert.deepEqual(parseFredObservations("observation_date,M2SL\n2026-09-01,10\n2026-09-01,11\n", fredSeriesDefinitions.M2SL, checkedAt), []);
+  const yieldPoints = parseFredObservations("observation_date,DFII10\n2026-11-09,0\n2026-11-10,-0.5\n", fredSeriesDefinitions.DFII10, checkedAt);
+  assert.deepEqual(yieldPoints.map((point) => point.value), [0, -0.5]);
+});
+
+test("sourced-only configurations do not require placeholder annual values", () => {
+  const config = publicFixture();
+  config.years = [];
+  config.indicators.forEach((indicator) => { delete indicator.values; });
+  assert.equal(scoreCommodity(config).score, 50);
+});
+
+test("monthly hydration uses a reporting lag policy and preserves scoring restrictions", () => {
+  const checkedAt = Date.parse("2026-11-11T12:00:00Z") / 1000;
+  const m2 = parseFredObservations("observation_date,M2SL\n2025-09-01,22000\n2026-08-01,23000\n2026-09-01,23413.9\n", fredSeriesDefinitions.M2SL, checkedAt);
+  const evidence = { m2: { release: { status: "matched", sourceUrl: "https://www.federalreserve.gov/releases/h6/20261027/default.htm", checkedAt, releaseDate: "2026-10-27", referencePeriod: "2026-09" } } };
+  const config = hydrateCommodityObservations(commodityConfigurations.gold, { m2 }, checkedAt, evidence);
+  const factor = config.indicators.find((indicator) => indicator.id === "m2");
+  assert.equal(factor.dataHealth.frequency, "monthly");
+  assert.equal(factor.dataHealth.status, "fresh");
+  assert.equal(factor.dataHealth.freshnessBasis, "reporting-lag");
+  assert.equal(factor.dataHealth.provenance.aggregation, "monthly-average");
+  assert.equal(factor.dataHealth.provenance.publishedAt, null);
+  assert.equal(scoreCommodity(config).score, null);
+  assert.equal(scoreCommodity(config).indicators.find((indicator) => indicator.id === "m2").exclusionReason, "unapproved");
+  const later = Date.parse("2026-12-01") / 1000;
+  const old = hydrateCommodityObservations(commodityConfigurations.gold, { m2 }, later, { m2: { release: { ...evidence.m2.release, checkedAt: later } } });
+  assert.equal(old.indicators.find((indicator) => indicator.id === "m2").dataHealth.status, "stale");
+  const unknown = hydrateCommodityObservations(commodityConfigurations.gold, { m2 }, checkedAt);
+  assert.equal(unknown.indicators.find((indicator) => indicator.id === "m2").dataHealth.status, "unavailable");
+  for (const status of ["behind", "mismatch"]) {
+    const changed = hydrateCommodityObservations(commodityConfigurations.gold, { m2 }, checkedAt, { m2: { release: { ...evidence.m2.release, status } } });
+    assert.equal(changed.indicators.find((indicator) => indicator.id === "m2").dataHealth.status, "stale");
+  }
+  const expired = hydrateCommodityObservations(commodityConfigurations.gold, { m2 }, checkedAt + 86401, evidence);
+  assert.equal(expired.indicators.find((indicator) => indicator.id === "m2").dataHealth.status, "unavailable");
+});
+
+test("forecast, future release and inconsistent unit metadata are rejected", () => {
+  const checkedAt = Date.parse("2026-11-11T12:00:00Z") / 1000;
+  const point = parseFredObservations("observation_date,M2SL\n2026-09-01,23000\n", fredSeriesDefinitions.M2SL, checkedAt)[0];
+  assert.equal(availableObservation(point, checkedAt), true);
+  for (const patch of [{ valueType: "forecast" }, { publishedAt: checkedAt + 86400 }, { retrievedAt: checkedAt + 1 }, { multiplier: 1 }]) {
+    const invalid = { ...point, provenance: { ...point.provenance, ...patch } };
+    assert.equal(availableObservation(invalid, checkedAt), false);
+    assert.equal(hydrateCommodityObservations(commodityConfigurations.gold, { m2: [invalid] }, checkedAt).indicators.find((indicator) => indicator.id === "m2").dataHealth.status, "unavailable");
+  }
+});
+
+test("Gold M2 and five-year breakeven reach reference cards with actual metadata and no sample fallback", async () => {
+  const originalFetch = globalThis.fetch;
+  const now = new Date(Date.now() - 86400000);
+  now.setUTCHours(0, 0, 0, 0);
+  const yearAgo = new Date(now);
+  yearAgo.setUTCFullYear(yearAgo.getUTCFullYear() - 1);
+  const monthly = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+  const monthlyPrevious = new Date(Date.UTC(monthly.getUTCFullYear() - 1, monthly.getUTCMonth(), 1));
+  const date = (value) => value.toISOString().slice(0, 10);
+  let offline = false;
+  let releaseOffline = false;
+  const releaseFetchModes = [];
+  const fredFetchModes = [];
+  const yahooFetchModes = [];
+  globalThis.fetch = async (raw, options) => {
+    const url = new URL(String(raw));
+    if (url.hostname === "api.stlouisfed.org") fredFetchModes.push(options?.cache);
+    if (url.hostname === "query1.finance.yahoo.com") yahooFetchModes.push(options?.cache);
+    if (url.hostname === "www.federalreserve.gov") {
+      releaseFetchModes.push(options?.cache);
+      if (releaseOffline) return new Response("Offline", { status: 503 });
+      if (url.pathname.endsWith("releaseDates.json")) return Response.json([{ yearValue: String(now.getUTCFullYear()), Months: [{ MonthValue: date(now).slice(0, 7).replace("-", ""), Dates: [date(now).replaceAll("-", "")] }] }]);
+      const releaseDate = new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric", year: "numeric", timeZone: "UTC" }).format(now);
+      const period = new Intl.DateTimeFormat("en-US", { month: "short", year: "numeric", timeZone: "UTC" }).format(monthly);
+      return new Response(`<div class="dates">Release Date: ${releaseDate}</div><table id="t1tg1"><thead><tr><th>Seasonally adjusted M2</th></tr></thead><tbody><tr><th>${period}</th></tr></tbody></table>`);
+    }
+    const id = url.searchParams.get("series_id");
+    if (offline && ["M2SL", "T5YIE"].includes(id)) return new Response("Offline", { status: 503 });
+    if (id === "M2SL") return fredResponse(id, [[date(monthlyPrevious), 22000], [date(monthly), 23413.9]]);
+    if (id === "T5YIE") return fredResponse(id, [[date(yearAgo), 2], [date(now), 2.25]]);
+    if (id) return fredResponse(id, []);
+    return Response.json({ chart: { result: [{ timestamp: [yearAgo.getTime() / 1000, now.getTime() / 1000], indicators: { quote: [{ close: [100, 95] }] } }] } });
+  };
+  try {
+    const config = { ...withoutWgcSources(commodityConfigurations.gold), contextProvider: undefined };
+    const dashboard = await getMacroIndicators(config, "en");
+    const m2 = dashboard.cards.find((card) => card.id === "m2");
+    const breakeven = dashboard.cards.find((card) => card.id === "breakeven");
+    assert.equal(m2.value, "$23.4T");
+    assert.equal(m2.dataHealth.frequency, "monthly");
+    assert.equal(m2.dataHealth.provenance.seriesId, "M2SL");
+    assert.equal(m2.dataHealth.archive.status, "disabled");
+    assert.equal(m2.dataHealth.release.status, "matched");
+    assert.equal(m2.dataHealth.status, "fresh");
+    assert.deepEqual(releaseFetchModes, ["no-store", "no-store"]);
+    assert.ok(fredFetchModes.slice(0, 3).every((mode) => mode === "no-store"));
+    assert.ok(yahooFetchModes.slice(0, 1).every((mode) => mode === "no-store"));
+    assert.equal(m2.ninetyDayChange, undefined);
+    assert.equal(breakeven.value, "2.25%");
+    assert.equal(breakeven.dataHealth.provenance.seriesId, "T5YIE");
+    assert.equal(dashboard.summary.release.referenceSampleWeight, 30);
+    assert.equal(dashboard.summary.score, null);
+    assert.equal(dashboard.summary.release.approvedCount, 7);
+    assert.equal(m2.factorScore, null);
+    releaseOffline = true;
+    const unchecked = await getMacroIndicators(config, "en");
+    const uncheckedM2 = unchecked.cards.find((card) => card.id === "m2");
+    assert.equal(uncheckedM2.value, "$23.4T");
+    assert.equal(uncheckedM2.dataHealth.status, "unavailable");
+    assert.equal(uncheckedM2.dataHealth.release.status, "unknown");
+    assert.equal(unchecked.summary.score, null);
+    offline = true;
+    const missing = await getMacroIndicators(config, "en");
+    assert.equal(missing.cards.find((card) => card.id === "m2").value, "—");
+    assert.equal(missing.cards.find((card) => card.id === "breakeven").value, "—");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("archive persistence is opt-in and reports failed writes without claiming retention", async () => {
+  const enabled = process.env.SOURCE_ARCHIVE_ENABLED;
+  const archivePermission = process.env.FRED_ARCHIVE_PERMITTED_SERIES;
+  const firstTime = Date.parse("2026-10-28T12:00:00Z") / 1000;
+  const nextTime = Date.parse("2026-11-11T12:00:00Z") / 1000;
+  const first = createSourceSnapshot("DATE,M2SL\n2026-09-01,23400\n", fredSeriesDefinitions.M2SL, firstTime);
+  const next = createSourceSnapshot("DATE,M2SL\n2026-09-01,23413.9\n", fredSeriesDefinitions.M2SL, nextTime);
+  let calls = 0;
+  const capture = async () => { calls += 1; return { captured_at: new Date(nextTime * 1000).toISOString(), first_captured_at: new Date(firstTime * 1000).toISOString(), previous: first, changed: true }; };
+  try {
+    delete process.env.SOURCE_ARCHIVE_ENABLED;
+    assert.deepEqual(await archiveSourceSnapshot(next, capture), { status: "disabled" });
+    assert.deepEqual(await archivedSnapshotKnownAt("M2SL", nextTime), { status: "disabled", snapshot: null });
+    assert.equal(calls, 0);
+    process.env.SOURCE_ARCHIVE_ENABLED = "true";
+    assert.deepEqual(await archiveSourceSnapshot(next, capture), { status: "disabled" });
+    assert.equal(calls, 0);
+    process.env.FRED_ARCHIVE_PERMITTED_SERIES = "M2SL";
+    const saved = await archiveSourceSnapshot(next, capture);
+    assert.equal(saved.status, "stored");
+    assert.equal(saved.firstCapturedAt, firstTime);
+    assert.deepEqual(saved.changes, { added: 0, revised: 1, removed: 0 });
+    assert.deepEqual(await archiveSourceSnapshot(next, async () => { throw new Error("Offline"); }), { status: "failed" });
+    assert.deepEqual(await archiveSourceSnapshot(next, async () => ({ captured_at: "bad", first_captured_at: "bad" })), { status: "failed" });
+    const reordered = { ...next, definition: Object.fromEntries(Object.entries(next.definition).reverse()) };
+    assert.equal(verifySourceSnapshot(reordered)[0].value, 23.4139);
+    const returned = { ...first, capturedAt: nextTime + 86400 };
+    assert.equal(snapshotKnownAt([first, next, returned], "M2SL", nextTime + 86400).checksum, first.checksum);
+  } finally {
+    if (enabled === undefined) delete process.env.SOURCE_ARCHIVE_ENABLED;
+    else process.env.SOURCE_ARCHIVE_ENABLED = enabled;
+    if (archivePermission === undefined) delete process.env.FRED_ARCHIVE_PERMITTED_SERIES;
+    else process.env.FRED_ARCHIVE_PERMITTED_SERIES = archivePermission;
+  }
+});
+
+test("H.6 release checks use official structured dates and the actual released reference period", () => {
+  const now = Date.parse("2026-11-11T12:00:00Z") / 1000;
+  const index = [{ yearValue: "2026", Months: [{ MonthValue: "202610", Dates: ["20261027"] }, { MonthValue: "202611", Dates: ["20261124"] }] }];
+  assert.equal(latestH6Release(index, now).date, "2026-10-27");
+  assert.equal(latestH6Release([{ yearValue: "2021", Months: [{ MonthValue: "202102", Dates: ["20210223***"] }] }], now).date, "2021-02-23");
+  assert.equal(latestH6Release("<html>Unavailable</html>", now), null);
+  assert.equal(latestH6Release([{ yearValue: "2026", Months: [{ MonthValue: "202602", Dates: ["20260230"] }] }], now), null);
+  assert.equal(latestH6Release([{ yearValue: "2026", Months: [{ MonthValue: "202610", Dates: ["20261101"] }] }], now), null);
+  const html = '<div class="dates">Release Date: October 27, 2026</div><table id="t1tg1"><thead><tr><th>Seasonally adjusted M2</th></tr></thead><tbody><tr><th>Aug. 2026</th></tr><tr><th>Sept. 2026</th></tr></tbody></table>';
+  const point = parseFredObservations("DATE,M2SL\n2026-09-01,23413.9", fredSeriesDefinitions.M2SL, now)[0];
+  assert.equal(compareH6Release(html, "2026-10-27", point, now).status, "matched");
+  const older = parseFredObservations("DATE,M2SL\n2026-08-01,23300.9", fredSeriesDefinitions.M2SL, now)[0];
+  assert.equal(compareH6Release(html, "2026-10-27", older, now).status, "behind");
+  const ahead = parseFredObservations("DATE,M2SL\n2026-10-01,23500", fredSeriesDefinitions.M2SL, now)[0];
+  assert.equal(compareH6Release(html, "2026-10-27", ahead, now).status, "mismatch");
+  assert.equal(compareH6Release(html, "2026-11-01", point, now).status, "unknown");
+  assert.equal(compareH6Release(html.replace("t1tg1", "other"), "2026-10-27", point, now).status, "unknown");
+  assert.equal(point.provenance.publishedAt, null);
+});
+
+test("source snapshots preserve raw evidence and detect local revisions without inventing publication vintages", () => {
+  const firstAt = Date.parse("2026-10-28T12:00:00Z") / 1000;
+  const secondAt = Date.parse("2026-11-11T12:00:00Z") / 1000;
+  const first = createSourceSnapshot("observation_date,M2SL\n2026-08-01,23000\n2026-09-01,23400\n", fredSeriesDefinitions.M2SL, firstAt);
+  const second = createSourceSnapshot("observation_date,M2SL\n2026-09-01,23413.9\n2026-10-01,23500\n", fredSeriesDefinitions.M2SL, secondAt);
+  assert.equal(first.checksum.length, 64);
+  assert.deepEqual(snapshotChanges(first, second), { added: 1, revised: 1, removed: 1 });
+  assert.equal(snapshotKnownAt([second, first], "M2SL", firstAt - 1), null);
+  assert.equal(snapshotKnownAt([second, first], "M2SL", firstAt).id, first.id);
+  assert.equal(snapshotKnownAt([second, first], "M2SL", secondAt).id, second.id);
+  const observations = verifySourceSnapshot(second);
+  assert.equal(observations[0].provenance.publishedAt, null);
+  assert.equal(observations[0].provenance.vintage, null);
+  assert.equal(observations[0].provenance.revisionStatus, "unknown");
+  assert.equal(observations[0].provenance.retrievedAt, secondAt);
+});
+
+test("snapshot integrity and source identity fail closed", () => {
+  const capturedAt = Date.parse("2026-11-11") / 1000;
+  const snapshot = createSourceSnapshot("observation_date,M2SL\n2026-09-01,23000\n", fredSeriesDefinitions.M2SL, capturedAt);
+  assert.throws(() => verifySourceSnapshot({ ...snapshot, rawCsv: snapshot.rawCsv.replace("23000", "24000") }), /integrity/);
+  assert.throws(() => verifySourceSnapshot({ ...snapshot, seriesId: "T5YIE" }), /Unsupported/);
+  assert.throws(() => createSourceSnapshot("<html>error</html>", fredSeriesDefinitions.M2SL, capturedAt), /Invalid/);
+  assert.deepEqual(snapshotChanges(snapshot, snapshot), { added: 0, revised: 0, removed: 0 });
 });
 
 test("dashboard preferences validate stored values and use safe server defaults", () => {
@@ -360,15 +883,30 @@ test("missing and stale sourced observations never fall back to seeded score val
 test("source health distinguishes fresh, stale, unavailable and sample observations", () => {
   const now = Date.parse("2026-11-11T12:00:00Z") / 1000;
   const points = [{ time: now - 86400, value: 100 }, { time: now - 366 * 86400, value: 110 }];
-  const fresh = hydrateCommodityObservations({ ...commodityConfigurations.gold, scoringPolicy: researchPolicy }, { dxy: points, "real-yields": [] }, now);
+  const config = withoutWgcSources({ ...commodityConfigurations.gold, scoringPolicy: researchPolicy });
+  const fresh = hydrateCommodityObservations(config, { dxy: points, "real-yields": [] }, now);
   assert.equal(fresh.indicators.find((item) => item.id === "dxy").dataHealth.status, "fresh");
   assert.equal(fresh.indicators.find((item) => item.id === "real-rates").dataHealth.status, "unavailable");
   assert.equal(fresh.indicators.find((item) => item.id === "etf-holdings").dataHealth.status, "sample");
-  assert.equal(scoreCommodity(fresh).coverage, 75);
-  const stale = hydrateCommodityObservations({ ...commodityConfigurations.gold, scoringPolicy: researchPolicy }, { dxy: [points[1]] }, now);
+  assert.equal(scoreCommodity(fresh).coverage, 45);
+  const stale = hydrateCommodityObservations(config, { dxy: [points[1]] }, now);
   assert.equal(stale.indicators.find((item) => item.id === "dxy").dataHealth.status, "stale");
-  assert.equal(scoreCommodity(stale).coverage, 55);
+  assert.equal(scoreCommodity(stale).coverage, 35);
   assert.deepEqual(calculateCommodityChanges(commodityChangesInput(stale)).find((item) => item.id === "dxy").changes, { monthly: null, quarterly: null, yoy: null });
+  const withinWindow = [{ time: now - 14 * 86400, value: 100 }];
+  const freshFred = hydrateCommodityObservations(config, {
+    dxy: withinWindow, "real-yields": withinWindow, "breakeven-5y": withinWindow,
+  }, now);
+  for (const id of ["dxy", "real-rates", "breakeven"]) {
+    assert.equal(freshFred.indicators.find((item) => item.id === id).dataHealth.status, "fresh");
+  }
+  const beyondWindow = [{ time: now - 15 * 86400, value: 100 }];
+  const staleFred = hydrateCommodityObservations(config, {
+    dxy: beyondWindow, "real-yields": beyondWindow, "breakeven-5y": beyondWindow,
+  }, now);
+  for (const id of ["dxy", "real-rates", "breakeven"]) {
+    assert.equal(staleFred.indicators.find((item) => item.id === id).dataHealth.status, "stale");
+  }
 });
 
 test("FRED and DXY observations reach the score and change engine; FRED blanks are not zero yields", async () => {
@@ -379,24 +917,33 @@ test("FRED and DXY observations reach the score and change engine; FRED blanks a
   const previous = new Date(day);
   previous.setUTCFullYear(previous.getUTCFullYear() - 1);
   const asDate = (date) => date.toISOString().slice(0, 10);
-  globalThis.fetch = async (url) => String(url).includes("fredgraph")
-    ? new Response(`observation_date,DFII10\n${asDate(previous)},2\n${asDate(day)},1\n${asDate(new Date(day.getTime() + 86400000))},\n`)
-    : Response.json({ chart: { result: [{ timestamp: [previous.getTime() / 1000, day.getTime() / 1000], indicators: { quote: [{ close: [100, 95] }] } }] } });
+  globalThis.fetch = async (raw) => {
+    const url = new URL(String(raw));
+    if (url.hostname === "api.stlouisfed.org") {
+      const id = url.searchParams.get("series_id");
+      if (id === "DFII10") return fredResponse(id, [
+        [asDate(previous), 2], [asDate(day), 1], [asDate(new Date(day.getTime() + 86400000)), "."],
+      ]);
+      if (id === "DTWEXBGS") return fredResponse(id, [[asDate(previous), 100], [asDate(day), 95]]);
+      return fredResponse(id, []);
+    }
+    return Response.json({ chart: { result: [{ timestamp: [previous.getTime() / 1000, day.getTime() / 1000], indicators: { quote: [{ close: [100, 95] }] } }] } });
+  };
   try {
-    const dashboard = await getMacroIndicators({ ...commodityConfigurations.gold, contextProvider: undefined, scoringPolicy: researchPolicy }, "en");
+    const dashboard = await getMacroIndicators({ ...withoutWgcSources(commodityConfigurations.gold), contextProvider: undefined, scoringPolicy: researchPolicy }, "en");
     assert.equal(dashboard.cards.find((card) => card.id === "real-rates").value, "1.00%");
     assert.equal(dashboard.cards.find((card) => card.id === "dxy").value, "95.0");
-    assert.equal(dashboard.summary.dataMix.sourcedWeight, 45);
-    assert.equal(dashboard.summary.coverage, 100);
+    assert.equal(dashboard.summary.dataMix.sourcedWeight, 40);
+    assert.equal(dashboard.summary.coverage, 70);
     const changes = calculateCommodityChanges(commodityChangesInput(dashboard.config));
     assert.equal(changes.find((item) => item.id === "real-rates").changes.yoy, -1);
     assert.equal(changes.find((item) => item.id === "dxy").changes.yoy, -5);
     globalThis.fetch = async () => { throw new Error("Feed offline"); };
-    const offline = await getMacroIndicators({ ...commodityConfigurations.gold, contextProvider: undefined, scoringPolicy: researchPolicy }, "en");
+    const offline = await getMacroIndicators({ ...withoutWgcSources(commodityConfigurations.gold), contextProvider: undefined, scoringPolicy: researchPolicy }, "en");
     assert.equal(offline.cards.find((card) => card.id === "dxy").factorScore, null);
     assert.equal(offline.cards.find((card) => card.id === "dxy").value, "—");
-    assert.equal(offline.summary.coverage, 55);
-    assert.equal(offline.summary.dataMix.sourcedWeight, 0);
+    assert.equal(offline.summary.coverage, 35);
+    assert.equal(offline.summary.dataMix.sourcedWeight, 5);
   } finally { globalThis.fetch = originalFetch; }
 });
 
@@ -408,11 +955,22 @@ test("duplicate sourced context cards are removed and their 90-day comparisons r
   const priorYear = new Date(day);
   priorYear.setUTCFullYear(priorYear.getUTCFullYear() - 1);
   const asDate = (date) => date.toISOString().slice(0, 10);
-  globalThis.fetch = async (url) => String(url).includes("fredgraph")
-    ? new Response(`observation_date,DFII10\n${asDate(priorYear)},1\n${asDate(prior90)},0\n${asDate(day)},2\n`)
-    : Response.json({ chart: { result: [{ timestamp: [priorYear.getTime() / 1000, prior90.getTime() / 1000, day.getTime() / 1000], indicators: { quote: [{ close: [110, 100, 95] }] } }] } });
+  globalThis.fetch = async (raw) => {
+    const url = new URL(String(raw));
+    if (url.hostname === "api.stlouisfed.org") {
+      const id = url.searchParams.get("series_id");
+      if (id === "DFII10") return fredResponse(id, [
+        [asDate(priorYear), 1], [asDate(prior90), 0], [asDate(day), 2],
+      ]);
+      if (id === "DTWEXBGS") return fredResponse(id, [
+        [asDate(priorYear), 110], [asDate(prior90), 100], [asDate(day), 95],
+      ]);
+      return fredResponse(id, []);
+    }
+    return Response.json({ chart: { result: [{ timestamp: [priorYear.getTime() / 1000, prior90.getTime() / 1000, day.getTime() / 1000], indicators: { quote: [{ close: [110, 100, 95] }] } }] } });
+  };
   try {
-    const expectedContexts = { gold: 4, silver: 2, copper: 2, oil: 4 };
+    const expectedContexts = { gold: 3, silver: 2, copper: 2, oil: 4 };
     for (const config of Object.values(commodityConfigurations)) {
       const dashboard = await getMacroIndicators(config, "en");
       assert.equal(dashboard.cards.filter((card) => card.group === "context").length, expectedContexts[config.commodity]);
@@ -420,6 +978,42 @@ test("duplicate sourced context cards are removed and their 90-day comparisons r
       assert.equal(dashboard.cards.find((card) => card.id === "dxy").ninetyDayChange, "-5.0%");
       if (config.commodity !== "oil") assert.equal(dashboard.cards.find((card) => card.id === "real-rates").ninetyDayChange, "+2.00 pp");
     }
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("Gold ratio averages use five years while charts retain ten years of weekly history", async () => {
+  const originalFetch = globalThis.fetch;
+  const now = Math.floor(Date.now() / 86400000) * 86400 - 86400;
+  let sparse = false;
+  let mismatchedQuoteSession = false;
+  globalThis.fetch = async (raw) => {
+    const url = String(raw);
+    if (new URL(url).hostname === "api.stlouisfed.org") return new Response("Offline", { status: 503 });
+    const symbol = decodeURIComponent(new URL(url).pathname.split("/").at(-1));
+    const timestamps = sparse ? [now - 3 * 365 * 86400, now] : Array.from({ length: 11 }, (_, index) => now - (10 - index) * 365 * 86400);
+    const values = timestamps.map((_, index) => symbol === "GC=F" ? 100 : symbol === "^GSPC" || symbol === "CL=F" ? (index < timestamps.length - 6 ? 100 : 50) : 200);
+    return Response.json({ chart: { result: [{ meta: { regularMarketPrice: values.at(-1), regularMarketTime: mismatchedQuoteSession && symbol === "^GSPC" ? now - 86400 : now,
+      exchangeTimezoneName: "America/New_York" }, timestamp: timestamps,
+      indicators: { quote: [{ close: values, high: values, low: values }] } }] } });
+  };
+  try {
+    const config = { ...commodityConfigurations.gold, scoreSources: undefined };
+    const dashboard = await getMacroIndicators(config, "en");
+    const goldSp = dashboard.cards.find((card) => card.id === "gold-sp");
+    const goldOil = dashboard.cards.find((card) => card.id === "gold-oil");
+    assert.equal(goldSp.comparison.value, "2.000");
+    assert.equal(goldOil.comparison.value, "2.00");
+    assert.equal(goldSp.comparison.label, "5-year average · weekly matched closes");
+    assert.equal(goldSp.chart.label, "10 years · weekly matched closes");
+    assert.equal(goldSp.chart.points.length, 11);
+    sparse = true;
+    const missingYear = await getMacroIndicators(config, "en");
+    assert.equal(missingYear.cards.find((card) => card.id === "gold-sp").yoyChange, "—");
+    sparse = false;
+    mismatchedQuoteSession = true;
+    const mismatched = await getMacroIndicators(config, "en");
+    assert.equal(mismatched.cards.find((card) => card.id === "gold-sp").value, "—");
+    assert.equal(mismatched.cards.find((card) => card.id === "gold-sp").dataHealth.status, "unavailable");
   } finally { globalThis.fetch = originalFetch; }
 });
 
@@ -519,12 +1113,19 @@ test("research-only annual adapters provide YoY without invented shorter periods
   }
 });
 
-test("explicit research mode preserves legacy sample scores and signed contributions", () => {
-  const expected = { gold: 70, silver: 73, copper: 70, oil: 64 };
+test("explicit research mode scores sample inputs and signed contributions", () => {
+  const expected = { silver: 73, copper: 70, oil: 64 };
   for (const [commodity, config] of Object.entries(commodityConfigurations)) {
     const result = scoreCommodity({ ...config, scoringPolicy: researchPolicy });
-    assert.equal(result.score, expected[commodity]);
-    assert.equal(result.indicators.length, 8);
+    if (commodity === "gold") {
+      const priorWeights = { ...config.weights, "real-rates": 30, "gold-seasonality": 0 };
+      const priorScore = scoreCommodity({ ...config, weights: priorWeights, scoringPolicy: researchPolicy });
+      const seasonalityScore = result.indicators.find((indicator) => indicator.id === "gold-seasonality").score;
+      const realRatesScore = result.indicators.find((indicator) => indicator.id === "real-rates").score;
+      const legacyWeightedScore = priorScore.indicators.reduce((sum, indicator) => sum + indicator.weightedScore, 0);
+      assert.equal(result.score, Math.round(legacyWeightedScore + (seasonalityScore - realRatesScore) * 0.05));
+    } else assert.equal(result.score, expected[commodity]);
+    assert.equal(result.indicators.length, config.indicators.length);
     assert.equal(config.years.filter((year) => year >= config.chartStartYear).length, 10);
     const rawScore = result.indicators.reduce((sum, indicator) => sum + indicator.weightedScore, 0);
     const netImpact = result.indicators.reduce((sum, indicator) => sum + indicator.contribution, 0);
@@ -549,9 +1150,28 @@ function summaryFixture(score, indicatorScores = [90, 90, 30], weights = [40, 30
 }
 
 test("macro narrative covers every outlook boundary including score 80", () => {
-  const boundaries = [[0, "strongly-bearish"], [19, "strongly-bearish"], [20, "bearish"], [39, "bearish"], [40, "neutral"], [59, "neutral"], [60, "bullish"], [79, "bullish"], [80, "bullish"], [81, "strongly-bullish"], [100, "strongly-bullish"]];
+  const boundaries = [[0, "strongly-bearish"], [19, "strongly-bearish"], [20, "bearish"], [39, "bearish"], [40, "bearish"], [59, "neutral"], [60, "bullish"], [79, "bullish"], [80, "bullish"], [81, "strongly-bullish"], [100, "strongly-bullish"]];
   for (const [score, outlook] of boundaries) assert.equal(generateMacroSummary(summaryFixture(score), "en").outlook, outlook);
   assert.throws(() => generateMacroSummary(summaryFixture(NaN), "en"), /Invalid/);
+});
+
+test("factor status and narrative share tolerant configured score boundaries", () => {
+  const config = fixture([0], [100]);
+  config.indicators[0].changeKind = "points";
+  config.indicators[0].values = [2.29, 2.34];
+  config.scoreRules.factors["factor-0"].scale = 0.25;
+  const factor = scoreCommodity(config).indicators[0];
+  assert.ok(factor.score < 60);
+  assert.equal(factor.status, "bullish");
+  const aggregateConfig = fixture([-1], [100]);
+  aggregateConfig.scoreRules.factors["factor-0"].scale = 5;
+  const aggregate = scoreCommodity(aggregateConfig);
+  assert.equal(aggregate.score, 40);
+  assert.equal(aggregate.status, "bearish");
+  const atBearish = generateMacroSummary(summaryFixture(40, [40], [100]), "en");
+  assert.equal(atBearish.outlook, "bearish");
+  assert.equal(atBearish.confidence, "high");
+  assert.equal(generateMacroSummary(summaryFixture(59.999999999999964, [59.999999999999964], [100]), "en").outlook, "bullish");
 });
 
 test("confidence uses weight agreeing with the outlook, not largest opposing group", () => {
@@ -629,14 +1249,14 @@ test("active indicators count valid weighted scores, including neutral and zero 
   assert.equal(countActiveIndicators({ indicatorScores: [], indicatorWeights: {} }), 0);
 });
 
-test("explicit research summaries can use eight sample indicators", async () => {
+test("explicit research summaries can use each commodity's configured indicators", async () => {
   for (const config of Object.values(commodityConfigurations)) {
     const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined, scoreSources: undefined, scoringPolicy: researchPolicy }, "en");
     const input = {
       indicatorScores: dashboard.cards.map((card) => ({ id: card.id, name: card.name, score: card.factorScore, trend: card.trend })),
       indicatorWeights: config.weights,
     };
-    assert.equal(countActiveIndicators(input), 8);
+    assert.equal(countActiveIndicators(input), config.indicators.length);
   }
 });
 
@@ -667,7 +1287,7 @@ test("unknown and invalid correlations are not presented as weak zero correlatio
 
 test("supplied Gold correlations propagate without leaking to other commodities", async () => {
   for (const config of Object.values(commodityConfigurations)) {
-    const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined, scoreSources: undefined }, "en");
+    const dashboard = await getMacroIndicators({ ...config, contextProvider: undefined, scoreSources: undefined, scoringPolicy: researchPolicy }, "en");
     for (const card of dashboard.cards) {
       assert.equal(card.commodityName, config.name.en);
       assert.equal(card.priceCorrelation, config.priceRelationships?.[card.id]);
@@ -676,6 +1296,8 @@ test("supplied Gold correlations propagate without leaking to other commodities"
   }
   assert.equal(commodityConfigurations.gold.priceRelationships["etf-holdings"], 0.81);
   assert.equal(classifyPriceRelationship(commodityConfigurations.gold.priceRelationships.dxy).stars, 4);
+  const publicDashboard = await getMacroIndicators({ ...commodityConfigurations.gold, contextProvider: undefined, scoreSources: undefined }, "en");
+  assert.ok(publicDashboard.cards.every((card) => card.priceCorrelation === undefined));
 });
 
 test("an additional commodity uses only configuration, without a context fetch", async () => {
@@ -716,5 +1338,58 @@ test("an additional commodity uses only configuration, without a context fetch",
   } finally {
     globalThis.fetch = originalFetch;
     delete commodityConfigurations[config.commodity];
+  }
+});
+
+test("header daily return uses the latest completed exchange-session close", async () => {
+  const originalFetch = globalThis.fetch;
+  const quoteTime = Date.parse("2026-11-11T15:00:00Z") / 1000;
+  const sessionTime = (date) => Date.parse(`${date}T14:30:00Z`) / 1000;
+  const config = commodityConfigurations.gold;
+  let timestamps = [sessionTime("2026-11-09"), sessionTime("2026-11-10")];
+  globalThis.fetch = async () => Response.json({ chart: { result: [{
+    meta: { regularMarketPrice: 110, regularMarketTime: quoteTime, exchangeTimezoneName: "America/New_York" },
+    timestamp: timestamps, indicators: { quote: [{ close: timestamps.map((_, index) => [100, 105][index]), high: [102, 107], low: [98, 103] }] },
+  }] } });
+  try {
+    const priorSession = await getCommodityHeaderData(config);
+    assert.ok(Math.abs(priorSession.dailyChange - (110 - 105) / 105 * 100) < 1e-10);
+    timestamps = [sessionTime("2026-11-10"), sessionTime("2026-11-11")];
+    const inSession = await getCommodityHeaderData(config);
+    assert.equal(inSession.dailyChange, 10);
+    timestamps = [sessionTime("2026-11-10"), sessionTime("2026-11-11")];
+    globalThis.fetch = async () => Response.json({ chart: { result: [{
+      meta: { regularMarketPrice: 110, regularMarketTime: quoteTime }, timestamp: timestamps,
+      indicators: { quote: [{ close: [100, 105], high: [102, 107], low: [98, 103] }] },
+    }] } });
+    assert.equal((await getCommodityHeaderData(config)).dailyChange, null);
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("Yahoo and FRED public feeds fail closed until source-specific reuse permission is recorded", async () => {
+  const originalFetch = globalThis.fetch;
+  const permissionKeys = ["YAHOO_FINANCE_AUTOMATED_ACCESS_CONFIRMED", "MARKET_DATA_PUBLIC_DISTRIBUTION_CONFIRMED", "FRED_M2SL_PUBLIC_USE_CONFIRMED", "FRED_T5YIE_PUBLIC_USE_CONFIRMED", "FRED_DFII10_PUBLIC_USE_CONFIRMED", "FRED_DTWEXBGS_PUBLIC_USE_CONFIRMED", "CFTC_COT_GOLD_PUBLIC_USE_CONFIRMED", "GPR_CI_PUBLIC_USE_CONFIRMED"];
+  const previous = Object.fromEntries(permissionKeys.map((key) => [key, process.env[key]]));
+  let fetchCount = 0;
+  globalThis.fetch = async () => { fetchCount += 1; throw new Error("Unapproved source was fetched"); };
+  for (const key of permissionKeys) delete process.env[key];
+  try {
+    const config = { ...commodityConfigurations.gold, contextProvider: undefined };
+    const dashboard = await getMacroIndicators(config, "en");
+    const header = await getCommodityHeaderData(config);
+    assert.equal(fetchCount, 0);
+    assert.equal(header.price, null);
+    assert.equal(header.rights[0].status, "review-required");
+    assert.equal(dashboard.cards.find((card) => card.id === "dxy").value, "—");
+    assert.equal(dashboard.cards.find((card) => card.id === "dxy").dataHealth.rights[0].status, "review-required");
+    assert.equal(dashboard.cards.find((card) => card.id === "m2").dataHealth.rights[0].status, "review-required");
+    assert.equal(getSourceRights("eia").allowed, true);
+    assert.equal(getSourceRights("eia").disclosure.status, "public-domain-attribution");
+  } finally {
+    globalThis.fetch = originalFetch;
+    for (const key of permissionKeys) {
+      if (previous[key] === undefined) delete process.env[key];
+      else process.env[key] = previous[key];
+    }
   }
 });

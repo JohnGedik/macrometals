@@ -1,4 +1,5 @@
 import { messages, type Locale } from "@/lib/i18n";
+import { classifyScoreStatus } from "@/lib/commodity-score";
 
 export type SummaryTrend = "up" | "down" | "flat" | "unavailable";
 export type SummaryIndicator = { id: string; name: string; score: number; trend: SummaryTrend };
@@ -33,14 +34,14 @@ export function countActiveIndicators(input: Pick<MacroSummaryInput, "indicatorS
 export function generateMacroSummary(input: MacroSummaryInput, locale: Locale): MacroSummaryResult {
   if (!Number.isFinite(input.score) || input.score < 0 || input.score > 100) throw new Error("Invalid macro summary score");
   const t = messages[locale].macro;
-  const outlook = input.score > 80 ? "strongly-bullish" : input.score >= 60 ? "bullish"
-    : input.score >= 40 ? "neutral" : input.score >= 20 ? "bearish" : "strongly-bearish";
-  const direction = input.score >= 60 ? "bullish" : input.score >= 40 ? "neutral" : "bearish";
   const rules = input.rules ?? { baseline: 50, bullish: 60, bearish: 40 };
+  const direction = classifyScoreStatus(input.score, rules);
+  const outlook = direction === "bullish" ? input.score > 80 ? "strongly-bullish" : "bullish"
+    : direction === "bearish" ? input.score < 20 ? "strongly-bearish" : "bearish" : "neutral";
   const totalWeight = Object.values(input.indicatorWeights).reduce((total, weight) => total + (Number.isFinite(weight) && weight > 0 ? weight : 0), 0);
   const indicators = input.indicatorScores.filter((indicator) => Number.isFinite(indicator.score) && indicator.score >= 0 && indicator.score <= 100);
   const agreeingWeight = indicators.reduce((total, indicator) => {
-    const status = indicator.score >= rules.bullish ? "bullish" : indicator.score <= rules.bearish ? "bearish" : "neutral";
+    const status = classifyScoreStatus(indicator.score, rules);
     const weight = input.indicatorWeights[indicator.id];
     return total + (status === direction && Number.isFinite(weight) && weight > 0 ? weight : 0);
   }, 0);

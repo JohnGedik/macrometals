@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { TriangleAlert } from "lucide-react";
 import { notFound } from "next/navigation";
 import { ArticleCard } from "@/components/article-card";
 import { getArticles } from "@/lib/articles";
@@ -36,16 +35,17 @@ export default async function TagPage({ params }: RouteProps) {
 
   return (
     <section className={`listing-page content-width${config ? " commodity-page" : ""}`}>
-      {config && <aside className="dashboard-prototype-notice" aria-labelledby="dashboard-prototype-title">
-        <TriangleAlert size={18} aria-hidden="true" />
-        <div><strong id="dashboard-prototype-title">{messages[locale].macro.prototypeTitle}</strong><p>{messages[locale].macro.prototypeNotice}</p></div>
-      </aside>}
+      {config && indicators?.summary?.score === null && <p className="datafeed-approval-notice" role="status">{messages[locale].macro.dataFeedApprovalNotice}</p>}
       {!config && <div className="section-kicker"><span className="eyebrow">{t.file}</span><span className="kicker-line" /></div>}
       {config && commodityData
         ? <CommodityHeader name={label} title={config.dashboardTitle[locale]} data={commodityData} labels={messages[locale].commodityHeader} locale={locale} />
         : <><h1>{label}</h1><p className="listing-intro">{t.description.replace("{topic}", label.toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-US"))}</p></>}
       {indicators && config && <MacroIndicators cards={indicators.cards} source={indicators.source} config={indicators.config} locale={locale} macroScore={indicators.summary} />}
       {articles.length > 0 && <div className="article-grid">{articles.map((article, index) => <ArticleCard key={article.id} article={article} index={index + 1} locale={locale} />)}</div>}
+      {config && <footer className="commodity-page-footer">
+        <p className="commodity-legal-disclaimer">{messages[locale].macro.disclaimer}</p>
+        <p className="dashboard-version">{messages[locale].macro.dashboardVersion}</p>
+      </footer>}
     </section>
   );
 }

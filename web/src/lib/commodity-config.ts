@@ -44,6 +44,11 @@ function configure(
       id: metric.id, name: metric.name, explanation: metric.explanation,
       unit: units[metric.unit], prefix: metric.unit === "trillion" ? "$" : "",
       tier: metric.tier, digits: metric.digits, changeKind: metric.changeKind, values: metric.values,
+      scoreMode: metric.scoreMode, currentValue: metric.currentValue,
+      ...(metric.id === "gold-seasonality" ? { dataHealth: {
+        kind: "sourced" as const, status: "fresh" as const, source: "Monthly gold seasonality profile",
+        frequency: "monthly" as const, observedAt: null, checkedAt: Date.now() / 1000,
+      } } : {}),
     })),
     weights: Object.fromEntries(seed.metrics.map((metric) => [metric.id, metric.weight])),
     scoreRules: {
@@ -59,7 +64,21 @@ function configure(
 export const commodityConfigurations = {
   gold: configure({
     commodity: "gold", name: { en: "Gold", tr: "Altın" }, contextProvider: "gold",
-    scoreSources: { dxy: "dxy", "real-rates": "real-yields" },
+    scoringPolicy: {
+      mode: "sourced-only", minimumCoverage: 80,
+      requiredIndicators: ["real-rates", "gold-seasonality", "dxy", "central-bank-purchases", "etf-holdings"],
+      approvedIndicators: ["gold-seasonality", "real-rates", "dxy", "breakeven", "central-bank-purchases", "etf-holdings", "cot-positioning"],
+    },
+    scoreSources: {
+      dxy: "dxy",
+      "real-rates": "real-yields",
+      m2: "m2",
+      breakeven: "breakeven-5y",
+      "central-bank-purchases": "wgc-central-bank",
+      "etf-holdings": "wgc-etf-holdings",
+      "cot-positioning": "cftc-gold-cot",
+      "geopolitical-risk": "gpr",
+    },
     priceRelationships: { "etf-holdings": 0.81, dxy: -0.74, "real-rates": -0.65, "central-bank-purchases": 0.48, m2: 0.55 },
     summaryTone: { en: "Monetary conditions and investment demand frame this outlook.", tr: "Bu görünüm parasal koşullar ve yatırım talebi çerçevesinde değerlendirilir." },
     market: { symbol: "GC=F", unit: "oz" },
@@ -76,7 +95,10 @@ export const commodityConfigurations = {
     ...goldMacroSeed,
     metrics: goldMacroSeed.metrics.map((metric) => ({
       ...metric,
-      name: localized((locale) => messages[locale].macro.names[metric.nameKey]),
+      name: metric.id === "dxy" ? localized((locale) => messages[locale].macro.names.broadDollarIndex)
+        : metric.id === "m2" ? { en: "U.S. M2 Money Supply", tr: "ABD M2 Para Arzı" }
+        : metric.id === "breakeven" ? { en: "5-Year U.S. Breakeven Inflation", tr: "5 Yıllık ABD Başabaş Enflasyonu" }
+        : localized((locale) => messages[locale].macro.names[metric.nameKey]),
       explanation: localized((locale) => messages[locale].macro.explanations.goldMacro[metric.id]),
     })),
   }),
@@ -112,14 +134,14 @@ export const commodityConfigurations = {
   }, copperMacroSeed),
   oil: configure({
     commodity: "oil", name: { en: "Oil", tr: "Petrol" }, contextProvider: "oil",
-    scoreSources: { dxy: "dxy" },
+    scoreSources: { dxy: "dxy", "geopolitical-risk": "gpr" },
     summaryTone: { en: "Physical demand, supply and inventory balances frame oil's backdrop.", tr: "Fiziki talep, arz ve stok dengeleri petrolün görünümünü şekillendirir." },
     market: { symbol: "CL=F", unit: "bbl" },
     dashboardTitle: localized((locale) => messages[locale].macro.oilDashboardTitle),
     scoreTitle: localized((locale) => messages[locale].macro.oilMacroScoreTitle),
     disclosure: localized((locale) => messages[locale].macro.oilMacroSampleNotice),
     source: { en: "Futures quotes may be delayed and are not spot prices.", tr: "Vadeli işlem fiyatları gecikmeli olabilir; spot fiyat değildir." },
-    refresh: { en: "Market data is cached for 15 minutes; EIA data for 6 hours.", tr: "Piyasa verisi 15 dakika, EIA verisi 6 saat önbelleklenir." },
+    refresh: { en: "Yahoo Finance is disabled pending reuse permission; EIA data refreshes every 6 hours.", tr: "Yeniden kullanım izni alınana kadar Yahoo Finance kapalıdır; EIA verisi 6 saatte bir yenilenir." },
     methodology: {
       en: {
         title: "How to read Oil indicators",

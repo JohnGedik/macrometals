@@ -1,7 +1,8 @@
 import type { CommodityConfiguration, CommodityIndicatorConfig } from "@/lib/commodity-score";
+import { availableObservation, periodComparison, type DataObservation } from "@/lib/observation-data";
 
 export type ChangePeriod = "monthly" | "quarterly" | "yoy";
-export type ChangeObservation = { time: number; value: number };
+export type ChangeObservation = DataObservation;
 export type ChangeIndicator = CommodityIndicatorConfig & { favorableDirection: -1 | 1 };
 export type CommodityChangesInput = {
   commodity: string;
@@ -25,13 +26,19 @@ const periods: Record<ChangePeriod, { months: number; toleranceDays: number }> =
 
 export function commodityChangesInput(config: CommodityConfiguration): CommodityChangesInput {
   const scoringRestricted = config.scoringPolicy?.mode !== "research";
-  const historicalValues = Object.fromEntries(config.indicators.map((indicator) => [indicator.id,
-    indicator.observations ?? config.years.map((year, index) => ({ time: Date.UTC(year, 6, 1) / 1000, value: indicator.values[index] })),
-  ]));
+  const historicalValues = Object.fromEntries(config.indicators.map((indicator) => {
+    const observations = indicator.observations ?? config.years.flatMap((year, index) => typeof indicator.values?.[index] === "number" ? [{ time: Date.UTC(year, 6, 1) / 1000, value: indicator.values[index] }] : []);
+    const latest = observations.at(-1)?.time ?? 0;
+    return [indicator.id, observations.filter((point) => point.time >= latest - 400 * 86400)];
+  }));
   return {
     commodity: config.commodity,
     scoringRestricted,
-    indicators: config.indicators.map((indicator) => ({ ...indicator, favorableDirection: config.scoreRules.factors[indicator.id].direction })),
+    indicators: config.indicators.map((indicator) => ({
+      id: indicator.id, name: indicator.name, explanation: indicator.explanation, unit: indicator.unit, prefix: indicator.prefix,
+      tier: indicator.tier, digits: indicator.digits, changeKind: indicator.changeKind,
+      favorableDirection: config.scoreRules.factors[indicator.id].direction,
+    })),
     weights: config.weights,
     currentValues: Object.fromEntries(config.indicators.map((indicator) => [indicator.id,
       scoringRestricted && (indicator.dataHealth?.kind !== "sourced" || !config.scoringPolicy?.approvedIndicators.includes(indicator.id))
@@ -50,6 +57,8 @@ function monthsBefore(time: number, months: number) {
 
 export function comparisonObservation(current: ChangeObservation, history: readonly ChangeObservation[], period: ChangePeriod): ChangeObservation | null {
   if (!Number.isFinite(current.time) || !Number.isFinite(new Date(current.time * 1000).getTime())) return null;
+  const matchedPeriod = periodComparison(current, history, periods[period].months);
+  if (matchedPeriod !== undefined) return matchedPeriod;
   const target = monthsBefore(current.time, periods[period].months);
   const previous = history.filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value) && point.time <= target)
     .toSorted((first, second) => first.time - second.time).at(-1);
@@ -59,11 +68,12 @@ export function comparisonObservation(current: ChangeObservation, history: reado
 export function calculateCommodityChanges(input: CommodityChangesInput): IndicatorChange[] {
   return input.indicators.map((indicator) => {
     const current = input.currentValues[indicator.id];
+    const asOf = Date.now() / 1000;
     const history = (input.historicalValues[indicator.id] ?? [])
-      .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value))
+      .filter((point) => availableObservation(point, asOf))
       .toSorted((first, second) => first.time - second.time);
     const changeFor = (period: ChangePeriod): number | null => {
-      if (!current || !Number.isFinite(current.time) || !Number.isFinite(current.value)
+      if (!current || !availableObservation(current, asOf)
         || !Number.isFinite(new Date(current.time * 1000).getTime())) return null;
       const previous = comparisonObservation(current, history, period);
       if (!previous) return null;

@@ -1,8 +1,20 @@
 import { comparisonObservation } from "@/lib/commodity-changes";
+import { availableObservation, type DataObservation, type ObservationProvenance, type ReportingPeriod } from "@/lib/observation-data";
+import type { ArchiveEvidence } from "@/lib/snapshot-archive";
+import type { ReleaseEvidence } from "@/lib/release-evidence";
+import type { SourceRightsDisclosure } from "@/lib/source-rights";
 
 export type Localized<T> = { en: T; tr: T };
 export type ScoreStatus = "bullish" | "neutral" | "bearish";
-export type Observation = { time: number; value: number };
+export type Observation = DataObservation;
+const scoreBoundaryTolerance = 1e-10;
+
+export function classifyScoreStatus(score: number, rules: Pick<CommodityConfiguration["scoreRules"], "bullish" | "bearish">): ScoreStatus {
+  if (score >= rules.bullish - scoreBoundaryTolerance) return "bullish";
+  if (score <= rules.bearish + scoreBoundaryTolerance) return "bearish";
+  return "neutral";
+}
+
 export type IndicatorDataHealth = {
   kind: "sample" | "sourced";
   status: "sample" | "fresh" | "stale" | "unavailable";
@@ -12,6 +24,13 @@ export type IndicatorDataHealth = {
   observedAt: number | null;
   checkedAt: number;
   maxAgeDays?: number;
+  maxLagMonths?: number;
+  reportingPeriod?: ReportingPeriod;
+  provenance?: ObservationProvenance;
+  archive?: ArchiveEvidence;
+  release?: ReleaseEvidence;
+  rights?: SourceRightsDisclosure[];
+  freshnessBasis?: string;
   dependencies?: {
     id: string;
     source: string;
@@ -30,7 +49,9 @@ export type CommodityIndicatorConfig = {
   tier: 1 | 2;
   digits: number;
   changeKind: "percentage" | "points" | "index-points";
-  values: readonly number[];
+  values?: readonly number[];
+  scoreMode?: "change" | "level";
+  currentValue?: number;
   observations?: readonly Observation[];
   dataHealth?: IndicatorDataHealth;
 };
@@ -42,7 +63,7 @@ export type CommodityConfiguration = {
   scoreTitle: Localized<string>;
   summaryTone?: Localized<string>;
   priceRelationships?: Readonly<Record<string, number>>;
-  scoreSources?: Readonly<Record<string, "dxy" | "real-yields">>;
+  scoreSources?: Readonly<Record<string, "dxy" | "real-yields" | "m2" | "breakeven-5y" | "wgc-central-bank" | "wgc-etf-holdings" | "cftc-gold-cot" | "gpr">>;
   scoringPolicy?: {
     mode: "sourced-only" | "research";
     minimumCoverage: number;
@@ -91,7 +112,8 @@ export function scoreCommodity(config: CommodityConfiguration) {
     && Object.keys(config.weights).length === ids.length && Object.keys(factors).length === ids.length
     && ids.every((id) => Number.isFinite(config.weights[id]) && config.weights[id] >= 0)
     && Math.abs(ids.reduce((total, id) => total + config.weights[id], 0) - 100) < 1e-8;
-  const validYears = config.years.length >= 2 && config.years.every((year, index) =>
+  const sampleInputs = config.indicators.some((indicator) => indicator.observations === undefined);
+  const validYears = (!sampleInputs && config.years.length === 0) || config.years.length >= 2 && config.years.every((year, index) =>
     Number.isInteger(year) && (index === 0 || year > config.years[index - 1]))
     && Number.isInteger(config.chartStartYear) && config.years.some((year) => year >= config.chartStartYear);
   if (!validRules || !validWeights || !validYears) throw new Error(`Invalid commodity configuration: ${config.commodity}`);
@@ -102,33 +124,36 @@ export function scoreCommodity(config: CommodityConfiguration) {
     throw new Error(`Invalid scoring policy: ${config.commodity}`);
   }
 
-  const statusOf = (score: number): ScoreStatus => score >= bullish ? "bullish" : score <= bearish ? "bearish" : "neutral";
   const rawIndicators = config.indicators.map((indicator): ScoredIndicator => {
     const rule = factors[indicator.id];
     if (!rule || !Number.isFinite(rule.scale) || rule.scale <= 0
       || !Number.isFinite(rule.trendThreshold) || rule.trendThreshold < 0
       || (rule.direction !== -1 && rule.direction !== 1)
-      || indicator.values.length !== config.years.length || !indicator.values.every(Number.isFinite)) {
+      || (indicator.observations === undefined && (indicator.scoreMode === "level"
+        ? !Number.isFinite(indicator.currentValue ?? indicator.values?.at(-1))
+        : !indicator.values || indicator.values.length !== config.years.length || !indicator.values.every(Number.isFinite)))) {
       throw new Error(`Invalid indicator configuration: ${config.commodity}/${indicator.id}`);
     }
-    const observations = indicator.observations?.filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value))
+    const observations = indicator.observations?.filter((point) => availableObservation(point, indicator.dataHealth?.checkedAt ?? Date.now() / 1000))
       .toSorted((first, second) => first.time - second.time);
     const latest = observations?.at(-1);
     const reference = latest ? comparisonObservation(latest, observations!, "yoy") : null;
-    const current = observations === undefined ? indicator.values.at(-1)! : latest?.value ?? null;
-    const previous = observations === undefined ? indicator.values.at(-2)! : reference?.value ?? null;
-    const change = current === null || previous === null ? null : indicator.changeKind !== "percentage" ? current - previous
+    const current = observations === undefined ? indicator.scoreMode === "level"
+      ? indicator.currentValue ?? indicator.values?.at(-1) ?? null : indicator.values?.at(-1) ?? null : latest?.value ?? null;
+    const previous = indicator.scoreMode === "level" ? null : observations === undefined ? indicator.values?.at(-2) ?? null : reference?.value ?? null;
+    const change = indicator.scoreMode === "level" ? null : current === null || previous === null ? null : indicator.changeKind !== "percentage" ? current - previous
       : previous === 0 ? (observations === undefined ? 0 : null) : (current - previous) / Math.abs(previous) * 100;
+    const scoreInput = indicator.scoreMode === "level" ? current : change;
     const exclusionReason = policy.mode === "sourced-only" && indicator.dataHealth?.kind !== "sourced" ? "sample"
       : policy.mode === "sourced-only" && !policy.approvedIndicators.includes(indicator.id) ? "unapproved"
-      : change === null || (indicator.dataHealth?.kind === "sourced" && indicator.dataHealth.status !== "fresh") ? "unavailable" : null;
-    const score = exclusionReason !== null ? null : Math.max(0, Math.min(100, baseline + change! * rule.direction / rule.scale * sensitivity));
+      : scoreInput === null || (indicator.dataHealth?.kind === "sourced" && indicator.dataHealth.status !== "fresh") ? "unavailable" : null;
+    const score = exclusionReason !== null ? null : Math.max(0, Math.min(100, baseline + scoreInput! * rule.direction / rule.scale * sensitivity));
     const weight = config.weights[indicator.id];
     return {
       id: indicator.id, current, previous, change, score, weight,
       weightedScore: score === null ? 0 : score * weight / 100,
       contribution: score === null ? 0 : (score - baseline) * weight / 100,
-      status: score === null ? "unavailable" : statusOf(score),
+      status: score === null ? "unavailable" : classifyScoreStatus(score, { bullish, bearish }),
       exclusionReason,
     };
   });
@@ -145,5 +170,5 @@ export function scoreCommodity(config: CommodityConfiguration) {
     .sort((first, second) => (positive ? second.contribution - first.contribution : first.contribution - second.contribution)
       || first.id.localeCompare(second.id))
     .slice(0, 3);
-  return { score, coverage, policy, missingRequired, publishable, status: score === null ? "unavailable" as const : statusOf(score), indicators, positiveDrivers: drivers(true), negativeDrivers: drivers(false) };
+  return { score, coverage, policy, missingRequired, publishable, status: score === null ? "unavailable" as const : classifyScoreStatus(score, { bullish, bearish }), indicators, positiveDrivers: drivers(true), negativeDrivers: drivers(false) };
 }

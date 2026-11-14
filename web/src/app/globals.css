@@ -2327,11 +2327,10 @@ textarea:focus-visible {
 }
 
 .listing-page.commodity-page { padding-top: 24px; }
-.dashboard-prototype-notice { display: flex; align-items: flex-start; gap: 10px; margin: 0 0 16px; padding: 10px 12px; border: 1px solid #d5bc74; border-left: 3px solid #9a741e; background: #fbf3d9; color: #674e16; font-size: 11px; line-height: 1.5; }
-.dashboard-prototype-notice > svg { flex: 0 0 18px; margin-top: 2px; }
-.dashboard-prototype-notice > div { min-width: 0; overflow-wrap: anywhere; }
-.dashboard-prototype-notice strong { display: block; margin-bottom: 3px; font-size: 12px; }
-.dashboard-prototype-notice p { margin: 0; }
+.datafeed-approval-notice { margin: 0 0 16px; padding: 10px 12px; border-left: 3px solid var(--yellow); background: var(--paper-light); color: var(--ink); font-size: 12px; line-height: 1.55; }
+.commodity-page-footer { margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--line); }
+.commodity-legal-disclaimer { margin: 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+.dashboard-version { display: inline-block; margin: 8px 0 0; padding: 2px 6px; border: 1px solid var(--line); border-radius: 999px; color: var(--muted); font-size: 9px; letter-spacing: 0.03em; }
 .commodity-page .macro-indicators { margin: 0 0 32px; padding: 0 0 14px; border-top: 0; }
 .commodity-page .gold-macro-score { margin-top: 12px; }
 .commodity-page .macro-refresh { margin: 8px 0; }

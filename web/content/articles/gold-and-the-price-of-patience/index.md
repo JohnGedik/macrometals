@@ -11,7 +11,7 @@ tags:
   - Dollar
 author:
   slug: ufuk-Gedikoglu
-  displayName: Ufuk Gedikoglu
+  displayName: Dr G
   bio: Independent macro researcher tracking the signals in precious metals, energy, and money.
   avatarUrl:
 ---

@@ -25,6 +25,10 @@ export function MacroIndicators({
   const t = messages[locale].macro;
   const scoreTitle = config.scoreTitle[locale];
   const methodology = config.methodology[locale];
+  const cardGroup = (card: IndicatorCardData): "tier1" | "tier2" | "context" => {
+    const metric = config.indicators.find((indicator) => indicator.id === card.id);
+    return metric ? metric.tier === 1 ? "tier1" : "tier2" : card.group ?? "context";
+  };
 
   return (
     <section className={`macro-indicators${macroScore ? " macro-gold" : ""}`} aria-labelledby="macro-indicators-title">
@@ -73,7 +77,7 @@ export function MacroIndicators({
         recentChanges={<WhatsChangedCard {...commodityChangesInput(config)} locale={locale} />} />}
       {macroScore ? (
         (["tier1", "tier2", "context"] as const).map((group) => {
-          const groupedCards = cards.filter((card) => card.group === group);
+          const groupedCards = cards.filter((card) => cardGroup(card) === group);
           if (!groupedCards.length) return null;
           const title = group === "tier1" ? t.goldTierOne : group === "tier2" ? t.goldTierTwo : t.goldCrossMarketContext;
           return <section className="gold-indicator-group" key={group}><h3>{title}</h3><div className="indicator-grid">{groupedCards.map((card) => <IndicatorCard key={card.id} card={card} locale={locale} />)}</div></section>;

@@ -11,7 +11,7 @@ tags:
   - Dollar
 author:
   slug: ufuk-Gedikoglu
-  displayName: Ufuk Gedikoglu
+  displayName: Dr G
   bio: Değerli metaller, enerji ve para piyasalarındaki sinyalleri izleyen bağımsız makroekonomi araştırmacısı.
   avatarUrl:
 ---

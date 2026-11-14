@@ -2,7 +2,7 @@
 
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { CommodityHeaderData } from "@/lib/indicators";
-import type { Locale } from "@/lib/i18n";
+import { messages, type Locale } from "@/lib/i18n";
 
 export function CommodityHeader({
   name,
@@ -27,6 +27,9 @@ export function CommodityHeader({
   locale: Locale;
 }) {
   const localeCode = locale === "tr" ? "tr-TR" : "en-US";
+  const t = messages[locale].macro;
+  const rightsStatuses = { "permission-confirmed": t.sourceUsePermissionConfirmed, "review-required": t.sourceUseReviewRequired,
+    "public-domain-attribution": t.sourceUseAttribution, "provenance-unverified": t.sampleRightsUnverified };
   const priceFormat = new Intl.NumberFormat(localeCode, { minimumFractionDigits: data.unit === "lb" ? 3 : 2, maximumFractionDigits: data.unit === "lb" ? 3 : 2 });
   const percentFormat = new Intl.NumberFormat(localeCode, { minimumFractionDigits: 2, maximumFractionDigits: 2, signDisplay: "always" });
   const monthYearFormat = new Intl.DateTimeFormat(localeCode, { month: "short", year: "2-digit", timeZone: "UTC" });
@@ -60,6 +63,9 @@ export function CommodityHeader({
           <div><dt>{labels.low52Week}</dt><dd>{formatPrice(data.low52Week)}</dd></div>
         </dl>
         <p className="commodity-observed">{labels.observed}: {observed}</p>
+        {data.rights.map((rights) => <p className="commodity-observed" key={rights.termsUrl}>
+          {rightsStatuses[rights.status]} <a href={rights.termsUrl} target="_blank" rel="noopener noreferrer">{t.sourceRightsTerms}</a>
+        </p>)}
       </div>
       <div className="commodity-header-chart" role="img" aria-label={`${name}, ${labels.chartLabel}`}>
         {data.points.length ? <ResponsiveContainer width="100%" height="100%">
