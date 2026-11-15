@@ -2293,7 +2293,7 @@ textarea:focus-visible {
 
 .community-sort select,
 .community-editor input,
-.community-editor textarea,
+.community-editor > textarea,
 .community-editor select {
   width: 100%;
   min-width: 0;
@@ -2345,6 +2345,14 @@ textarea:focus-visible {
   min-width: 0;
   overflow: hidden;
   border: 1px solid var(--line);
+}
+
+.community-markdown-editor .w-md-editor-text {
+  color: #000;
+}
+
+.community-markdown-editor .w-md-editor-text-input {
+  caret-color: #000;
 }
 
 .community-editor-actions {
