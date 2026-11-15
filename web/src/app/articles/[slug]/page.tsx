@@ -8,12 +8,14 @@ import { ShareActions } from "@/components/share-actions";
 import { VoteWidget } from "@/components/vote-widget";
 import { ArticleViewTracker } from "@/components/article-view-tracker";
 import { ArticleCard } from "@/components/article-card";
+import { CommunityNotice, ReportControl, SaveArticleControl } from "@/components/community-controls";
+import { communityCopy } from "@/lib/community-copy";
 import { getArticleBySlug, getArticles } from "@/lib/articles";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { getTagLabel, messages } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 
-type RouteProps = { params: Promise<{ slug: string }> };
+type RouteProps = { params: Promise<{ slug: string }>; searchParams: Promise<{ error?: string; notice?: string }> };
 
 export async function generateMetadata({ params }: RouteProps): Promise<Metadata> {
   const { slug } = await params;
@@ -43,7 +45,7 @@ export async function generateMetadata({ params }: RouteProps): Promise<Metadata
   };
 }
 
-export default async function ArticlePage({ params }: RouteProps) {
+export default async function ArticlePage({ params, searchParams }: RouteProps) {
   const { slug } = await params;
   const locale = await getLocale();
   const t = messages[locale].article;
@@ -51,7 +53,10 @@ export default async function ArticlePage({ params }: RouteProps) {
   if (!article) notFound();
 
   const supabase = await createSupabaseServerClient();
+  const status = await searchParams;
   let currentUserId: string | null = null;
+  let saved = false;
+  let saveError = false;
   let comments: Array<{
     id: string;
     user_id: string;
@@ -64,6 +69,16 @@ export default async function ArticlePage({ params }: RouteProps) {
   if (supabase) {
     const { data: { user } } = await supabase.auth.getUser();
     currentUserId = user?.id ?? null;
+    if (user) {
+      const { data: savedArticle, error } = await supabase.from("saved_articles")
+        .select("article_id").eq("user_id", user.id).eq("article_id", article.id).maybeSingle();
+      if (error) {
+        console.error("Could not load saved article state", error.code);
+        saveError = true;
+      } else {
+        saved = !!savedArticle;
+      }
+    }
     const { data } = await supabase
       .from("comments")
       .select("id, user_id, content, created_at, updated_at, profiles(display_name, avatar_url)")
@@ -90,6 +105,11 @@ export default async function ArticlePage({ params }: RouteProps) {
       <div className="article-body-layout content-width">
         <aside className="article-share-rail"><ShareActions title={article.title} locale={locale} /></aside>
         <div className="article-reading-column">
+          <CommunityNotice error={status.error} notice={status.notice} locale={locale} />
+          <div className="community-article-actions">
+            {saveError ? <p role="alert">{communityCopy[locale].failed}</p> : <SaveArticleControl id={article.id} path={`/articles/${article.slug}`} saved={saved} signedIn={!!currentUserId} locale={locale} />}
+            <ReportControl type="article" id={article.id} path={`/articles/${article.slug}`} signedIn={!!currentUserId} locale={locale} />
+          </div>
           <VoteWidget articleId={article.id} slug={article.slug} upvotes={article.upvotes ?? 0} downvotes={article.downvotes ?? 0} userVote={article.userVote ?? 0} signedIn={currentUserId !== null} locale={locale} />
           <div className="article-prose"><ReactMarkdown>{article.body}</ReactMarkdown></div>
           <div className="article-author-card"><Avatar name={article.author.displayName} imageUrl={article.author.avatarUrl} size="large" /><div><span className="eyebrow">{t.writtenBy}</span><h2><Link href={article.author.username ? `/profile/${article.author.username}` : `/author/${article.author.slug}`}>{article.author.displayName}</Link></h2><p>{article.author.bio}</p></div></div>

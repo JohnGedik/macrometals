@@ -67,6 +67,7 @@ export default async function ProfilePage({
           <p className="muted-copy">{t.writingDescription}</p>
           {profile?.username && <Link className="text-link" href={`/profile/${profile.username}`}>{t.viewProfile} <span>↗</span></Link>}
           <Link className="button-primary profile-write-link" href="/write">{t.writeArticle} <span>→</span></Link>
+          <Link className="text-link" href="/library">{locale === "tr" ? "Kitaplığım" : "My Library"} <span>→</span></Link>
           <div className="profile-email-note"><span className="eyebrow">{t.signedInAs}</span><span>{user.email}</span></div>
         </aside>
       </div>

@@ -136,17 +136,18 @@ type CommunityRow = {
 
 type VoteSummary = { article_id: string; upvotes: number; downvotes: number; user_vote: number };
 
-async function getCommunityArticles(): Promise<Article[]> {
+async function getCommunityArticles(slug?: string): Promise<Article[]> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return [];
 
-  const { data: rawArticles, error } = await supabase
+  let query = supabase
     .from("articles")
     .select("id, author_id, slug, title, summary, body, cover_image, featured_image, published_at, created_at, language, category_id, view_count")
     .eq("published", true)
     .not("author_id", "is", null)
-    .order("published_at", { ascending: false })
-    .limit(100);
+    .order("published_at", { ascending: false });
+  query = slug ? query.eq("slug", slug) : query.limit(100);
+  const { data: rawArticles, error } = await query;
   if (error || !rawArticles?.length) return [];
 
   const rows = rawArticles as CommunityRow[];
@@ -211,7 +212,8 @@ async function getCommunityArticles(): Promise<Article[]> {
 }
 
 export async function getArticleBySlug(slug: string, locale: Locale = "en") {
-  return (await getArticles(locale)).find((article) => article.slug === slug) ?? null;
+  return (await getArticles(locale)).find((article) => article.slug === slug)
+    ?? (await getCommunityArticles(slug))[0] ?? null;
 }
 
 export async function getAuthorBySlug(slug: string, locale: Locale = "en") {

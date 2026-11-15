@@ -15,7 +15,7 @@ Open http://localhost:3000. The journal and seeded sample articles render withou
 ## Supabase setup
 
 1. Copy `web/.env.example` to `web/.env.local` and set `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from the Supabase project settings.
-2. Apply [`web/supabase/migrations/20261107000000_initial_schema.sql`](web/supabase/migrations/20261107000000_initial_schema.sql), then [`web/supabase/migrations/20261111000000_community_publishing.sql`](web/supabase/migrations/20261111000000_community_publishing.sql), in order, in the Supabase SQL editor or with the Supabase CLI.
+2. Apply [`web/supabase/migrations/20261107000000_initial_schema.sql`](web/supabase/migrations/20261107000000_initial_schema.sql), [`web/supabase/migrations/20261111000000_community_publishing.sql`](web/supabase/migrations/20261111000000_community_publishing.sql), and [`web/supabase/migrations/20261115010000_community_library_discussions.sql`](web/supabase/migrations/20261115010000_community_library_discussions.sql), in order, in the Supabase SQL editor or with the Supabase CLI.
 3. In Supabase Authentication, enable Google and email providers. Email login uses a passwordless sign-in link. Add `http://localhost:3000/auth/callback` and the deployed callback URL to the allowed redirect URLs.
 4. Configure the Google OAuth client ID and secret in Supabase, and set its callback URL to the Supabase-provided Google provider callback.
 
@@ -28,6 +28,8 @@ The Next.js site uses `@supabase/ssr` for its cookie-based login flow. `@supabas
 - `/` publication home
 - `/articles/[slug]` article, comments, share links, and social metadata
 - `/community` member-published articles with latest, top-rated, most-viewed, and trending sorts
+- `/community/topics` topic-filtered articles and discussions; `/discussions/new` and `/discussions/[id]` create and read discussions
+- `/library` signed-in user's drafts, published articles, and saved articles
 - `/write` create articles and drafts; `/write/[slug]` edit your own articles
 - `/tag/[tag]` related articles
 - `/search?q=...` article content, title, summary, category, author, and tag search
@@ -43,6 +45,10 @@ Each article is a Markdown document at `web/content/articles/<slug>/index.md`. Y
 To provide a Turkish translation, add `index.tr.md` in the same article directory with matching `id`, `slug`, `tags`, and author identity. Translate the title, summary, author bio, and body. If `index.tr.md` is absent, that article displays in English while the rest of the interface remains Turkish.
 
 Members can publish Markdown articles from `/write`. Drafts are private to their author; publishing makes the article available in the Community feed and existing article routes. Voting is one vote per account per article; selecting the active direction removes the vote, and selecting the opposite direction changes it. Commenting continues to use the existing flat comment system.
+
+Members can save articles privately, submit short discussions by topic, vote on discussions, and reply up to three levels deep. Topic feeds show up to 100 discussions sorted by the selected order, alongside the latest available articles. A saved article that has been removed or unpublished is shown as unavailable and can be removed from the library.
+
+Reports are private and require manual review by a trusted administrator in the Supabase dashboard's `community_reports` table. Regular API roles cannot read reports; review the target type and ID, investigate the referenced content, and handle it manually. There is no moderator dashboard or automatic content removal.
 
 ## Macro indicator methodology
 
