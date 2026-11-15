@@ -43,5 +43,5 @@ export async function saveProfileAction(formData: FormData) {
     : await supabase.from("profiles").update(values).eq("id", user.id);
 
   if (result.error) redirect(`/profile?error=${encodeURIComponent(t.saveError)}`);
-  redirect("/profile?saved=1");
+  redirect("/");
 }
