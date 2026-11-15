@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type FormEvent } from "react";
+import { useRouter } from "next/navigation";
 import MDEditor from "@uiw/react-md-editor";
 import "@uiw/react-md-editor/markdown-editor.css";
 import "@uiw/react-markdown-preview/markdown.css";
@@ -32,15 +33,42 @@ export function ArticleEditor({
   saved?: boolean;
 }) {
   const t = messages[locale].editor;
+  const router = useRouter();
   const [content, setContent] = useState(values.content ?? "");
+  const [submitError, setSubmitError] = useState<"invalid" | "save" | "auth" | "profile" | null>(null);
+  const [pending, setPending] = useState(false);
   const categories = t.categories as readonly string[];
+
+  async function submitArticle(event: FormEvent<HTMLFormElement>) {
+    const submitter = (event.nativeEvent as SubmitEvent).submitter;
+    if (!(submitter instanceof HTMLButtonElement) || submitter.name !== "intent") return;
+    event.preventDefault();
+    if (pending) return;
+    const formData = new FormData(event.currentTarget, submitter);
+    setPending(true);
+    setSubmitError(null);
+    try {
+      const result = await saveArticleAction(formData);
+      if (result.error) setSubmitError(result.error);
+      else router.push(result.redirectTo);
+    } catch (error) {
+      console.error("Article submission failed", error);
+      setSubmitError("save");
+    } finally {
+      setPending(false);
+    }
+  }
 
   return (
     <div className="community-editor-wrap">
       <p className="muted-copy">{t.description}</p>
       {error && <p className="form-alert error" role="alert">{error === "invalid" ? t.invalid : t.saveFailed}</p>}
+      {submitError && <p className="form-alert error" role="alert">
+        {submitError === "invalid" ? t.invalid : submitError === "auth" ? t.signInAgain : submitError === "profile" ? t.profileFailed : t.saveFailed}
+        {submitError === "auth" && <> <a href="/login" target="_blank" rel="noopener noreferrer">{t.signInLink}</a></>}
+      </p>}
       {saved && <p className="form-alert success" role="status">{t.saved}</p>}
-      <form className="community-editor" action={saveArticleAction}>
+      <form className="community-editor" method="post" onSubmit={submitArticle}>
         <input type="hidden" name="article_id" value={values.id ?? ""} />
         <input type="hidden" name="content_markdown" value={content} />
         <label htmlFor="article-title">{t.articleTitle}</label>
@@ -60,10 +88,10 @@ export function ArticleEditor({
           <MDEditor value={content} onChange={(value) => setContent(value ?? "")} height={440} preview="live" textareaProps={{ placeholder: t.content, "aria-label": t.content }} />
         </div>
         <div className="community-editor-actions">
-          {values.id && <button className="button-secondary" type="submit" formAction={deleteArticleAction} formNoValidate>{t.delete}</button>}
+          {values.id && <button className="button-secondary" type="submit" formAction={deleteArticleAction} formNoValidate disabled={pending}>{t.delete}</button>}
           <span />
-          <button className="button-secondary" type="submit" name="intent" value="draft">{t.saveDraft}</button>
-          <button className="button-primary" type="submit" name="intent" value="publish">{t.publish} <span>→</span></button>
+          <button className="button-secondary" type="submit" name="intent" value="draft" disabled={pending}>{pending ? t.saving : t.saveDraft}</button>
+          <button className="button-primary" type="submit" name="intent" value="publish" disabled={pending}>{t.publish} <span>→</span></button>
         </div>
       </form>
     </div>

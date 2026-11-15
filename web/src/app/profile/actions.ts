@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { messages } from "@/lib/i18n";
+import { ensureProfile } from "@/lib/ensure-profile";
 
 export async function saveProfileAction(formData: FormData) {
   const supabase = await createSupabaseServerClient();
@@ -19,6 +20,10 @@ export async function saveProfileAction(formData: FormData) {
 
   if (!displayName || displayName.length > 80 || bio.length > 500) {
     redirect(`/profile?error=${encodeURIComponent(t.invalidFields)}`);
+  }
+
+  if (!await ensureProfile(supabase, user.id)) {
+    redirect(`/profile?error=${encodeURIComponent(t.saveError)}`);
   }
 
   let avatarUrl: string | null = null;
@@ -39,9 +44,12 @@ export async function saveProfileAction(formData: FormData) {
 
   const values = { display_name: displayName, bio };
   const result = avatarUrl
-    ? await supabase.from("profiles").update({ ...values, avatar_url: avatarUrl }).eq("id", user.id)
-    : await supabase.from("profiles").update(values).eq("id", user.id);
+    ? await supabase.from("profiles").update({ ...values, avatar_url: avatarUrl }).eq("id", user.id).select("id").maybeSingle()
+    : await supabase.from("profiles").update(values).eq("id", user.id).select("id").maybeSingle();
 
-  if (result.error) redirect(`/profile?error=${encodeURIComponent(t.saveError)}`);
+  if (result.error || !result.data) {
+    console.error("Could not save profile", result.error?.code);
+    redirect(`/profile?error=${encodeURIComponent(t.saveError)}`);
+  }
   redirect("/");
 }

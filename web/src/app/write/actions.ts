@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { ensureProfile } from "@/lib/ensure-profile";
 
 const allowedLanguages = new Set(["en", "tr"]);
 const tagSlug = (value: string) => value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -13,9 +14,12 @@ function articleSlug(value: string) {
 
 export async function saveArticleAction(formData: FormData) {
   const supabase = await createSupabaseServerClient();
-  if (!supabase) redirect("/login?error=Supabase+is+not+configured");
+  if (!supabase) {
+    console.error("Article publishing is not configured");
+    return { error: "save" as const };
+  }
   const { data: { user } } = await supabase.auth.getUser();
-  if (!user) redirect("/login");
+  if (!user) return { error: "auth" as const };
 
   const title = String(formData.get("title") ?? "").trim();
   const summary = String(formData.get("summary") ?? "").trim();
@@ -29,23 +33,30 @@ export async function saveArticleAction(formData: FormData) {
   const published = intent === "publish";
 
   if (!title || title.length > 140 || !summary || summary.length > 300 || !content || content.length > 100000 || !allowedLanguages.has(language) || tags.some((tag) => tag.length > 40)) {
-    redirect(`/write?error=invalid`);
+    return { error: "invalid" as const };
   }
-  if (image && (!/^https?:\/\//i.test(image) || image.length > 2048)) redirect("/write?error=invalid");
+  if (image && (!/^https?:\/\//i.test(image) || image.length > 2048)) return { error: "invalid" as const };
 
-  const { data: profile } = await supabase.from("profiles").select("id").eq("id", user.id).maybeSingle();
-  if (!profile) redirect("/login?error=Profile+is+not+ready");
+  if (!await ensureProfile(supabase, user.id)) return { error: "profile" as const };
 
   let slug = articleSlug(title);
   const suffix = user.id.slice(0, 6);
   for (let attempt = 0; attempt < 4; attempt += 1) {
-    const { data: collision } = await supabase.from("articles").select("id").eq("slug", slug).maybeSingle();
+    const { data: collision, error } = await supabase.from("articles").select("id").eq("slug", slug).maybeSingle();
+    if (error) {
+      console.error("Could not check article slug", error.code);
+      return { error: "save" as const };
+    }
     if (!collision || collision.id === articleId) break;
     slug = `${articleSlug(title).slice(0, 92)}-${suffix}${attempt ? `-${attempt}` : ""}`;
   }
 
-  const { data: category } = await supabase.from("categories").select("id").eq("slug", categorySlug).maybeSingle();
-  if (!category) redirect("/write?error=invalid");
+  const { data: category, error: categoryError } = await supabase.from("categories").select("id").eq("slug", categorySlug).maybeSingle();
+  if (categoryError) {
+    console.error("Could not load article category", categoryError.code);
+    return { error: "save" as const };
+  }
+  if (!category) return { error: "invalid" as const };
 
   const values = {
     author_id: user.id,
@@ -66,11 +77,17 @@ export async function saveArticleAction(formData: FormData) {
   let savedId = articleId;
   if (articleId) {
     const { data, error } = await supabase.from("articles").update(values).eq("id", articleId).eq("author_id", user.id).select("id").maybeSingle();
-    if (error || !data) redirect(`/write/${encodeURIComponent(slug)}?error=save`);
+    if (error || !data) {
+      console.error("Could not update article", error?.code);
+      return { error: "save" as const };
+    }
     savedId = data.id;
   } else {
     const { data, error } = await supabase.from("articles").insert(values).select("id").single();
-    if (error || !data) redirect("/write?error=save");
+    if (error || !data) {
+      console.error("Could not create article", error?.code);
+      return { error: "save" as const };
+    }
     savedId = data.id;
   }
 
@@ -93,8 +110,7 @@ export async function saveArticleAction(formData: FormData) {
   revalidatePath("/community");
   revalidatePath("/profile");
   revalidatePath(`/articles/${slug}`);
-  if (published) redirect(`/articles/${slug}`);
-  redirect(`/write/${slug}?saved=1`);
+  return { redirectTo: published ? `/articles/${slug}` : `/write/${slug}?saved=1` };
 }
 
 export async function deleteArticleAction(formData: FormData) {
