@@ -4,12 +4,15 @@ import { ArrowUpRight, Search, UserRound } from "lucide-react";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { signOut } from "@/app/auth/actions";
 import { LanguageSwitch } from "@/components/language-switch";
+import { HeaderDropdown } from "@/components/header-dropdown";
+import { communityCopy } from "@/lib/community-copy";
 import { messages } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 
 export async function SiteHeader() {
   const locale = await getLocale();
   const t = messages[locale].header;
+  const community = communityCopy[locale];
   const supabase = await createSupabaseServerClient();
   const { data: { user } = { user: null } } = supabase
     ? await supabase.auth.getUser()
@@ -28,7 +31,11 @@ export async function SiteHeader() {
         </Link>
         <nav className="primary-nav" aria-label="Main navigation">
           <Link href="/">{t.latest}</Link>
-          <Link href="/community">{t.community}</Link>
+          <HeaderDropdown label={t.community} variant="community">
+            <Link href="/community">{community.articles}</Link>
+            <Link href="/community/topics">{t.discussionsTopics}</Link>
+            <Link href="/discussions/new">{community.newDiscussion}</Link>
+          </HeaderDropdown>
           <Link href="/tag/gold">{t.gold}</Link>
           <Link href="/tag/silver">{t.silver}</Link>
           <Link href="/tag/copper">{t.copper}</Link>
@@ -41,14 +48,12 @@ export async function SiteHeader() {
             <input id="header-search" name="q" placeholder={t.search} />
             <button type="submit" aria-label={t.submitSearch}><Search size={16} /></button>
           </form>
-          {user ? (
-            <div className="account-actions">
-              <Link className="account-link" href="/profile"><UserRound size={16} /> {t.profile}</Link>
-              <form action={signOut}><button className="signout-link" type="submit">{t.signOut}</button></form>
-            </div>
-          ) : (
-            <Link className="login-link" href="/login">{t.signIn} <ArrowUpRight size={15} /></Link>
-          )}
+          <HeaderDropdown label={user ? t.profile : t.signIn} variant="account" icon={<UserRound size={16} aria-hidden="true" />}>
+            {user ? <Link href="/profile">{t.myProfile}</Link> : <Link href="/login">{t.signIn} <ArrowUpRight size={13} aria-hidden="true" /></Link>}
+            <Link href="/library">{community.library}</Link>
+            <Link href="/write">{messages[locale].profile.writeArticle}</Link>
+            {user && <form action={signOut}><button type="submit">{t.signOut}</button></form>}
+          </HeaderDropdown>
         </div>
       </div>
     </header>

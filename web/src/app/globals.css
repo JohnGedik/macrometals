@@ -209,6 +209,79 @@ textarea:focus-visible {
   color: var(--yellow);
 }
 
+.header-dropdown {
+  position: relative;
+}
+
+.header-dropdown-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.header-dropdown-trigger:hover,
+.header-dropdown-trigger[aria-expanded="true"] {
+  color: var(--yellow);
+}
+
+.header-dropdown--account {
+  color: var(--paper-light);
+  font-size: 11px;
+}
+
+.header-dropdown-panel {
+  position: absolute;
+  z-index: 5;
+  top: calc(100% + 12px);
+  left: 0;
+  display: flex;
+  min-width: 205px;
+  flex-direction: column;
+  padding: 6px;
+  border: 1px solid rgb(255 255 255 / 20%);
+  background: var(--forest);
+  box-shadow: 0 8px 20px rgb(0 0 0 / 20%);
+  color: var(--paper-light);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.header-dropdown--account .header-dropdown-panel {
+  right: 0;
+  left: auto;
+}
+
+.header-dropdown-panel[hidden] {
+  display: none;
+}
+
+.header-dropdown-panel a,
+.header-dropdown-panel button {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.header-dropdown-panel a:hover,
+.header-dropdown-panel button:hover {
+  color: var(--yellow);
+}
+
 .header-actions {
   gap: 18px;
 }
@@ -2656,16 +2729,20 @@ textarea:focus-visible {
   .primary-nav {
     order: 3;
     width: 100%;
-    gap: 21px;
-    overflow-x: auto;
+    flex-wrap: wrap;
+    gap: 12px 21px;
     padding: 10px 0 12px;
     border-top: 1px solid rgb(255 255 255 / 14%);
-    white-space: nowrap;
-    scrollbar-width: none;
   }
 
-  .primary-nav::-webkit-scrollbar {
-    display: none;
+  .header-dropdown--community[data-open="true"] {
+    flex-basis: 100%;
+  }
+
+  .header-dropdown--community .header-dropdown-panel {
+    position: static;
+    margin-top: 10px;
+    box-shadow: none;
   }
 
   .market-note {

@@ -38,6 +38,8 @@ The Next.js site uses `@supabase/ssr` for its cookie-based login flow. `@supabas
 - `/login` Google or email-link sign-in
 - `/profile` signed-in profile and avatar editor, draft list, and writing link
 
+The header's Community menu links to articles and discussions; the account menu provides access to the library and writing. Visitors can use these links and will be asked to sign in where required.
+
 ## Writing articles
 
 Each article is a Markdown document at `web/content/articles/<slug>/index.md`. YAML frontmatter defines its `id`, `slug`, `title`, `summary`, `coverImage`, `publishedAt`, `tags`, and `author`; the document body supports standard Markdown. Keep the article `id` aligned with its row in the Supabase `articles` table so comments continue to reference the correct article.
