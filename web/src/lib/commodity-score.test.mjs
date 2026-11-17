@@ -606,9 +606,9 @@ test("Silver enables all eight sourced factors and publishes with full or partia
 test("gold seasonality is a five-percent Tier 1 factor scored from the current month's return", async () => {
   const config = commodityConfigurations.gold;
   const seasonality = config.indicators.find((indicator) => indicator.id === "gold-seasonality");
-  assert.equal(config.weights["real-rates"], 25);
-  assert.equal(config.weights.dxy, 10);
-  assert.equal(config.weights.breakeven, 10);
+  assert.equal(config.weights["real-rates"], 20);
+  assert.equal(config.weights.dxy, 20);
+  assert.equal(config.weights.breakeven, 5);
   assert.equal(config.weights["gold-seasonality"], 5);
   assert.equal(seasonality.tier, 1);
   assert.equal(seasonality.scoreMode, "level");
@@ -1345,7 +1345,7 @@ test("source health distinguishes fresh, stale, unavailable and sample observati
   assert.equal(fresh.indicators.find((item) => item.id === "dxy").dataHealth.status, "fresh");
   assert.equal(fresh.indicators.find((item) => item.id === "real-rates").dataHealth.status, "unavailable");
   assert.equal(fresh.indicators.find((item) => item.id === "etf-holdings").dataHealth.status, "sample");
-  assert.equal(scoreCommodity(fresh).coverage, 45);
+  assert.equal(scoreCommodity(fresh).coverage, 55);
   const stale = hydrateCommodityObservations(config, { dxy: [points[1]] }, now);
   assert.equal(stale.indicators.find((item) => item.id === "dxy").dataHealth.status, "stale");
   assert.equal(scoreCommodity(stale).coverage, 35);
@@ -1390,8 +1390,8 @@ test("FRED and DXY observations reach the score and change engine; FRED blanks a
     const dashboard = await getMacroIndicators({ ...withoutWgcSources(commodityConfigurations.gold), contextProvider: undefined, scoringPolicy: researchPolicy }, "en");
     assert.equal(dashboard.cards.find((card) => card.id === "real-rates").value, "1.00%");
     assert.equal(dashboard.cards.find((card) => card.id === "dxy").value, "95.0");
-    assert.equal(dashboard.summary.dataMix.sourcedWeight, 40);
-    assert.equal(dashboard.summary.coverage, 70);
+    assert.equal(dashboard.summary.dataMix.sourcedWeight, 45);
+    assert.equal(dashboard.summary.coverage, 75);
     const changes = calculateCommodityChanges(commodityChangesInput(dashboard.config));
     assert.equal(changes.find((item) => item.id === "real-rates").changes.yoy, -1);
     assert.equal(changes.find((item) => item.id === "dxy").changes.yoy, -5);
@@ -1575,7 +1575,7 @@ test("explicit research mode scores sample inputs and signed contributions", () 
   for (const [commodity, config] of Object.entries(commodityConfigurations)) {
     const result = scoreCommodity({ ...config, scoringPolicy: researchPolicy });
     if (commodity === "gold") {
-      const priorWeights = { ...config.weights, "real-rates": 30, "gold-seasonality": 0 };
+      const priorWeights = { ...config.weights, "real-rates": 25, "gold-seasonality": 0 };
       const priorScore = scoreCommodity({ ...config, weights: priorWeights, scoringPolicy: researchPolicy });
       const seasonalityScore = result.indicators.find((indicator) => indicator.id === "gold-seasonality").score;
       const realRatesScore = result.indicators.find((indicator) => indicator.id === "real-rates").score;
