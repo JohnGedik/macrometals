@@ -1,6 +1,6 @@
 export type SourceRightsStatus = "permission-confirmed" | "review-required" | "public-domain-attribution" | "provenance-unverified";
 export type SourceRightsDisclosure = { status: SourceRightsStatus; termsUrl?: string };
-export type SourceProvider = "yahoo" | "fred" | "wgc" | "cftc" | "gpr" | "eia" | "public-domain";
+export type SourceProvider = "yahoo" | "fred" | "wgc" | "cftc" | "gpr" | "silver-institute" | "eia" | "public-domain";
 export const unverifiedSampleRights: SourceRightsDisclosure = { status: "provenance-unverified" };
 
 const yahooTermsUrl = "https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html";
@@ -15,9 +15,17 @@ const wgcSeriesFlags: Record<string, string> = {
 };
 const cftcSeriesFlags: Record<string, string> = {
   "CFTC-72HH-3QPY-088691-MANAGED-MONEY-NET": "CFTC_COT_GOLD_PUBLIC_USE_CONFIRMED",
+  "CFTC-72HH-3QPY-084691-MANAGED-MONEY-NET": "CFTC_COT_SILVER_PUBLIC_USE_CONFIRMED",
+  "CFTC-72HH-3QPY-067651-MANAGED-MONEY-NET": "CFTC_COT_WTI_PUBLIC_USE_CONFIRMED",
 };
 const gprSeriesFlags: Record<string, string> = {
   "CALDARA-IACOVIELLO-GPR-RECENT-MONTHLY": "GPR_CI_PUBLIC_USE_CONFIRMED",
+};
+const silverInstituteSeriesFlags: Record<string, string> = {
+  "SILVER-INDUSTRIAL-DEMAND": "SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED",
+  "SILVER-SOLAR-DEMAND": "SILVER_SOLAR_DEMAND_PUBLIC_USE_CONFIRMED",
+  "SILVER-MINE-SUPPLY": "SILVER_MINE_SUPPLY_PUBLIC_USE_CONFIRMED",
+  "SILVER-GLOBAL-ETP-HOLDINGS": "SILVER_ETP_HOLDINGS_PUBLIC_USE_CONFIRMED",
 };
 
 export function getSourceRights(provider: SourceProvider, seriesId?: string) {
@@ -32,11 +40,14 @@ export function getSourceRights(provider: SourceProvider, seriesId?: string) {
         ? !!seriesId && !!cftcSeriesFlags[seriesId] && process.env[cftcSeriesFlags[seriesId]] === "true"
         : provider === "gpr"
           ? !!seriesId && !!gprSeriesFlags[seriesId] && process.env[gprSeriesFlags[seriesId]] === "true"
-          : !!seriesId && process.env[`FRED_${seriesId}_PUBLIC_USE_CONFIRMED`] === "true";
+          : provider === "silver-institute"
+            ? !!seriesId && !!silverInstituteSeriesFlags[seriesId] && process.env[silverInstituteSeriesFlags[seriesId]] === "true"
+            : !!seriesId && process.env[`FRED_${seriesId}_PUBLIC_USE_CONFIRMED`] === "true";
   return {
     allowed,
     disclosure: { status: allowed ? "permission-confirmed" as const : "review-required" as const,
-      termsUrl: provider === "yahoo" ? yahooTermsUrl : provider === "wgc" ? wgcTermsUrl : provider === "cftc" ? cftcTermsUrl : provider === "gpr" ? gprTermsUrl : fredTermsUrl },
+      termsUrl: provider === "yahoo" ? yahooTermsUrl : provider === "wgc" ? wgcTermsUrl : provider === "cftc" ? cftcTermsUrl : provider === "gpr" ? gprTermsUrl
+        : provider === "silver-institute" ? "https://silverinstitute.org/all-world-silver-surveys-2025/" : fredTermsUrl },
   };
 }
 

@@ -3,6 +3,13 @@ import type { DataObservation } from "@/lib/observation-data";
 export const cftcGoldCotSeriesId = "CFTC-72HH-3QPY-088691-MANAGED-MONEY-NET";
 export const cftcGoldCotApiUrl = "https://publicreporting.cftc.gov/resource/72hh-3qpy.json";
 export const cftcGoldCotSourceUrl = "https://publicreporting.cftc.gov/stories/s/r4w3-av2u";
+export const cftcSilverCotSeriesId = "CFTC-72HH-3QPY-084691-MANAGED-MONEY-NET";
+export const cftcWtiCotSeriesId = "CFTC-72HH-3QPY-067651-MANAGED-MONEY-NET";
+export const cftcCotDefinitions = {
+  gold: { contractCode: "088691", seriesId: cftcGoldCotSeriesId },
+  silver: { contractCode: "084691", seriesId: cftcSilverCotSeriesId },
+  oil: { contractCode: "067651", seriesId: cftcWtiCotSeriesId },
+} as const;
 
 type CftcGoldCotRow = {
   cftc_contract_market_code: unknown;
@@ -30,11 +37,11 @@ function contracts(value: unknown) {
   return Number.isSafeInteger(result) && result >= 0 ? result : null;
 }
 
-export function parseCftcGoldManagedMoney(payload: unknown, retrievedAt = Date.now() / 1000): DataObservation[] {
+export function parseCftcManagedMoney(payload: unknown, definition: (typeof cftcCotDefinitions)[keyof typeof cftcCotDefinitions], retrievedAt = Date.now() / 1000): DataObservation[] {
   if (!Array.isArray(payload) || !payload.length || !Number.isFinite(retrievedAt) || retrievedAt <= 0) return [];
   const rows: DataObservation[] = [];
   for (const raw of payload) {
-    if (!isRecord(raw) || raw.cftc_contract_market_code !== "088691") return [];
+    if (!isRecord(raw) || raw.cftc_contract_market_code !== definition.contractCode) return [];
     const date = reportDate(raw.report_date_as_yyyy_mm_dd);
     const long = contracts(raw.m_money_positions_long_all);
     const short = contracts(raw.m_money_positions_short_all);
@@ -47,7 +54,7 @@ export function parseCftcGoldManagedMoney(payload: unknown, retrievedAt = Date.n
       reportingPeriod: { start: date, end: date, label: date, frequency: "weekly" },
       provenance: {
         provider: "Commodity Futures Trading Commission",
-        seriesId: cftcGoldCotSeriesId,
+        seriesId: definition.seriesId,
         sourceUrl: cftcGoldCotSourceUrl,
         sourceDate: date,
         retrievedAt,
@@ -73,4 +80,8 @@ export function parseCftcGoldManagedMoney(payload: unknown, retrievedAt = Date.n
     unique.set(point.time, point);
   }
   return [...unique.values()].sort((first, second) => first.time - second.time);
+}
+
+export function parseCftcGoldManagedMoney(payload: unknown, retrievedAt = Date.now() / 1000): DataObservation[] {
+  return parseCftcManagedMoney(payload, cftcCotDefinitions.gold, retrievedAt);
 }

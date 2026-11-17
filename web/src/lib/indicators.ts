@@ -12,9 +12,11 @@ import { getH6ReleaseEvidence } from "@/lib/release-evidence";
 import { fredArchivePermitted, getSourceRights, unverifiedSampleRights, type SourceRightsDisclosure } from "@/lib/source-rights";
 import { hydrateCommodityObservations } from "@/lib/commodity-data";
 import { wgcObservationFeeds } from "@/lib/wgc-gold-observations";
-import { cftcGoldCotApiUrl, cftcGoldCotSeriesId, parseCftcGoldManagedMoney } from "@/lib/cftc-cot";
+import { silverIndustrialFeed, silverSolarFeed, silverMineFeed, silverEtpFeed } from "@/lib/silver-industrial-observations";
+import { cftcGoldCotApiUrl, cftcCotDefinitions, parseCftcManagedMoney } from "@/lib/cftc-cot";
 import { gprDownloadUrl, gprSeriesId, parseRecentGprRows } from "@/lib/gpr";
 import { currentStressIndex, derivedDataHealth, stressIndexAt, type DerivedDependency } from "@/lib/derived-data";
+import { getEiaOilFeeds } from "@/lib/eia-oil";
 
 export type { CommodityKey } from "@/lib/commodity-config";
 
@@ -217,12 +219,13 @@ async function getFredSeries(seriesId: keyof typeof fredSeriesDefinitions): Prom
   }
 }
 
-async function getCftcGoldCotSeries(): Promise<Series | null> {
-  if (!getSourceRights("cftc", cftcGoldCotSeriesId).allowed) return null;
+async function getCftcCotSeries(commodity: keyof typeof cftcCotDefinitions): Promise<Series | null> {
+  const definition = cftcCotDefinitions[commodity];
+  if (!getSourceRights("cftc", definition.seriesId).allowed) return null;
   const url = new URL(cftcGoldCotApiUrl);
   url.search = new URLSearchParams({
     "$select": "report_date_as_yyyy_mm_dd,cftc_contract_market_code,m_money_positions_long_all,m_money_positions_short_all",
-    "$where": "cftc_contract_market_code='088691'",
+    "$where": `cftc_contract_market_code='${definition.contractCode}'`,
     "$order": "report_date_as_yyyy_mm_dd DESC",
     "$limit": "650",
   }).toString();
@@ -233,18 +236,18 @@ async function getCftcGoldCotSeries(): Promise<Series | null> {
       signal: AbortSignal.timeout(6000),
     });
     if (!response.ok) {
-      console.error("CFTC COT request failed", { status: response.status });
+      console.error("CFTC COT request failed", { commodity, status: response.status });
       return null;
     }
-    const points = parseCftcGoldManagedMoney(await response.json());
+    const points = parseCftcManagedMoney(await response.json(), definition);
     const latest = points.at(-1);
     if (!latest) {
-      console.error("CFTC COT response was invalid or empty");
+      console.error("CFTC COT response was invalid or empty", { commodity });
       return null;
     }
     return { current: latest.value, currentTime: latest.time, points };
   } catch (error) {
-    console.error("CFTC COT request failed", error instanceof Error ? error.message : "Unknown error");
+    console.error("CFTC COT request failed", { commodity, error: error instanceof Error ? error.message : "Unknown error" });
     return null;
   }
 }
@@ -520,13 +523,17 @@ export async function getMacroIndicators(config: CommodityConfiguration, locale:
       } : indicator),
   } : config;
   const requestedSources = new Set(Object.values(activeConfig.scoreSources ?? {}));
-  const [dxy, realYields, m2, breakeven, cot, gpr] = await Promise.all([
+  const [dxy, realYields, m2, breakeven, cot, gpr, silverBreakeven, silverCot, wtiCot, oilFeeds] = await Promise.all([
     requestedSources.has("dxy") ? getFredSeries("DTWEXBGS") : Promise.resolve(null),
     requestedSources.has("real-yields") ? getRealYieldSeries() : Promise.resolve(null),
     requestedSources.has("m2") ? getFredSeries("M2SL") : Promise.resolve(null),
     requestedSources.has("breakeven-5y") ? getFredSeries("T5YIE") : Promise.resolve(null),
-    requestedSources.has("cftc-gold-cot") ? getCftcGoldCotSeries() : Promise.resolve(null),
+    requestedSources.has("cftc-gold-cot") ? getCftcCotSeries("gold") : Promise.resolve(null),
     requestedSources.has("gpr") ? getGprSeries() : Promise.resolve(null),
+    requestedSources.has("breakeven-10y") ? getFredSeries("T10YIE") : Promise.resolve(null),
+    requestedSources.has("cftc-silver-cot") ? getCftcCotSeries("silver") : Promise.resolve(null),
+    requestedSources.has("cftc-wti-cot") ? getCftcCotSeries("oil") : Promise.resolve(null),
+    [...requestedSources].some((source) => source.startsWith("eia-oil-")) ? getEiaOilFeeds() : Promise.resolve({}),
   ]);
   const checkedAt = Date.now() / 1000;
   const hydrationConfig = config.commodity === "gold" ? {
@@ -535,16 +542,24 @@ export async function getMacroIndicators(config: CommodityConfiguration, locale:
       ? { ...indicator, dataHealth: { ...indicator.dataHealth, checkedAt } } : indicator),
   } : activeConfig;
   const resolvedConfig = hydrateCommodityObservations(hydrationConfig, {
+    ...oilFeeds,
     dxy: dxy?.points ?? null,
     "real-yields": realYields?.points ?? null,
     m2: m2?.points ?? null,
     "breakeven-5y": breakeven?.points ?? null,
     "wgc-central-bank": wgcObservationFeeds["wgc-central-bank"],
     "wgc-etf-holdings": wgcObservationFeeds["wgc-etf-holdings"],
+    "silver-industrial-demand": silverIndustrialFeed,
+    "silver-solar-demand": silverSolarFeed,
+    "silver-mine-supply": silverMineFeed,
+    "silver-etp-holdings": silverEtpFeed,
+    "breakeven-10y": silverBreakeven?.points ?? null,
+    "cftc-silver-cot": silverCot?.points ?? null,
     "cftc-gold-cot": cot?.points ?? null,
+    "cftc-wti-cot": wtiCot?.points ?? null,
     gpr: gpr?.points ?? null,
   }, checkedAt,
-    { "real-yields": realYields ?? {}, m2: m2 ?? {}, "breakeven-5y": breakeven ?? {} });
+    { "real-yields": realYields ?? {}, m2: m2 ?? {}, "breakeven-5y": breakeven ?? {}, "breakeven-10y": silverBreakeven ?? {} });
   const macro = macroScoreCards(locale, resolvedConfig);
   const context = activeConfig.contextProvider
     ? await getContextIndicators(activeConfig.contextProvider, locale)

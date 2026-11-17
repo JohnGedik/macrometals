@@ -42,7 +42,7 @@ export function IndicatorDataHealth({ health, locale, exclusionReason }: { healt
           <div><dt>{t.periodRangeLabel}</dt><dd>{period ? `${period.start} / ${period.end}` : t.metadataUnknown}</dd></div>
           <div><dt>{t.unitsLabel}</dt><dd>{provenance.rawUnit} → {provenance.normalizedUnit} (×{provenance.multiplier})</dd></div>
           <div><dt>{t.rawValueLabel}</dt><dd>{new Intl.NumberFormat(locale === "tr" ? "tr-TR" : "en-US", { maximumFractionDigits: 10 }).format(provenance.rawValue)} {provenance.rawUnit}</dd></div>
-          <div><dt>{t.measurementLabel}</dt><dd>{measurements[provenance.measurement]} · {provenance.aggregation === "monthly-index" ? t.monthlyIndexLabel : provenance.aggregation === "monthly-average" ? t.monthlyAverageLabel : t.dailyObservationLabel} · {provenance.seasonalAdjustment}</dd></div>
+          <div><dt>{t.measurementLabel}</dt><dd>{measurements[provenance.measurement]} · {provenance.aggregation === "year-end" ? t.yearEndLabel : provenance.aggregation === "month-end" ? t.monthEndLabel : provenance.aggregation === "annual-average" ? t.annualAverageLabel : provenance.aggregation === "weekly-report" ? t.weeklyReportLabel : provenance.aggregation === "annual-total" ? t.annualTotalLabel : provenance.aggregation === "monthly-index" ? t.monthlyIndexLabel : provenance.aggregation === "monthly-average" ? t.monthlyAverageLabel : t.dailyObservationLabel} · {provenance.seasonalAdjustment}</dd></div>
           <div><dt>{t.retrievedLabel}</dt><dd>{formatDate(provenance.retrievedAt)}</dd></div>
           <div><dt>{t.publishedLabel}</dt><dd>{provenance.publishedAt === null ? t.metadataUnknown : formatDate(provenance.publishedAt)}</dd></div>
           <div><dt>{t.vintageLabel}</dt><dd>{provenance.vintage ?? t.metadataUnknown}</dd></div>
@@ -65,7 +65,7 @@ export function IndicatorDataHealth({ health, locale, exclusionReason }: { healt
         </dl>
         {release && <p>{t.releaseEvidenceLimit}</p>}
         {archive && <p>{t.archiveEvidenceLimit}</p>}
-        <p>{t.csvMetadataLimit}</p>
+        <p>{provenance.provider === "U.S. Energy Information Administration" ? t.eiaMetadataLimit : provenance.aggregation === "annual-total" || provenance.aggregation === "year-end" ? t.annualSurveyMetadataLimit : t.csvMetadataLimit}</p>
       </details>}
       {health.dependencies && <details className="indicator-health-dependencies">
         <summary>{t.requiredInputsLabel}</summary>

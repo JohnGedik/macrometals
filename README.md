@@ -60,7 +60,7 @@ Reports are private and require manual review by a trusted administrator in the 
 
 All commodity dashboards use the registry in [`web/src/lib/commodity-config.ts`](web/src/lib/commodity-config.ts), the pure score engine in [`web/src/lib/commodity-score.ts`](web/src/lib/commodity-score.ts), and the same `/tag/[tag]` route and renderer. Yahoo/FRED factors are permission-gated; source availability is not approval for scoring. Remaining annual histories are illustrative samples, not verified or live market data, and their public values/charts are hidden because origin and reuse rights are undocumented. Market/EIA context cards are not additional score factors.
 
-Public dashboards use a fail-closed `scoringPolicy`: `mode: "sourced-only"`, `minimumCoverage: 80`, all Tier 1 factors required, and an explicit `approvedIndicators` allowlist. Gold's allowlist includes seasonality, reported WGC reserve changes and ETF holdings, FRED real rates, the Nominal Broad U.S. Dollar Index (DTWEXBGS), five-year breakeven inflation, and CFTC COMEX Gold Managed Money net positioning. DTWEXBGS is a broad trade-weighted index, not ICE DXY; Yahoo access remains pending for other market data. Monthly Caldara–Iacoviello Recent GPR is sourced for Gold and Oil display, but remains excluded from scores until separately approved as a score input. The other commodity allowlists remain empty. A score is withheld unless all required factors are fresh and the minimum coverage is met. Approval is not inferred by the implementation. The 80% threshold is a conservative publication guardrail, not an empirically validated accuracy threshold. See [DATA_AUDIT.md](DATA_AUDIT.md) for the remaining issues.
+Public dashboards use a `scoringPolicy` with `mode: "sourced-only"` and an explicit `approvedIndicators` allowlist. Gold retains an 80% minimum coverage and required Tier 1 factors. At the owner's request, Silver, Copper and Oil instead have `minimumCoverage: 0` and no required factors. Silver approves all eight factors; Copper approves only its existing FRED real-rate and broad-dollar feeds; Oil approves seven verified factors, excluding refinery throughput. These partial-score dashboards can publish with any positive eligible weight, rescaling available factors to 100%; the UI still discloses actual coverage and excluded weight. None can publish from zero eligible inputs, samples, unapproved, stale or invalid data. Gold's allowlist includes seasonality, reported WGC reserve changes and ETF holdings, FRED real rates, the broad dollar index (DTWEXBGS), five-year breakeven inflation, and CFTC COMEX Gold Managed Money net positioning. DTWEXBGS is not ICE DXY. Monthly Caldara-Iacoviello Recent GPR is sourced for Gold display but excluded from Gold scoring; it is approved for Oil scoring. Gold's 80% threshold is a conservative publication guardrail, not an empirically validated accuracy threshold. See [DATA_AUDIT.md](DATA_AUDIT.md) for the remaining issues.
 
 Samples and unapproved inputs have null factor scores and zero contribution. They cannot influence aggregate score, confidence, narratives, score drivers or Recent Changes. Unverified sample values/charts are hidden publicly and show a provenance/reuse warning; explicit `mode: "research"` remains available for internal fixtures and the public registry/route do not expose a research-mode switch. If eligible approved weight is below the minimum or a critical factor is missing, no aggregate number, bullish/bearish outlook, confidence badge or market narrative is published. Even a small set of approved factors is not silently presented as the full eight-factor model.
 
@@ -90,13 +90,79 @@ npm run import:wgc -- "C:\path\to\changes-workbook.xlsx" "C:\path\to\etf-workboo
 
 The importer writes only derived monthly aggregates to `web/src/lib/wgc-gold-observations.json`; do not commit the raw workbooks. Public display is controlled by `WGC_CENTRAL_BANK_GOLD_PUBLIC_USE_CONFIRMED` and `WGC_GOLD_ETF_PUBLIC_USE_CONFIRMED`. The anonymous cron downloader is not an authenticated WGC service and does not replace this import step.
 
+### Industrial silver demand
+
+The Silver dashboard uses The Silver Institute / Metals Focus [World Silver Survey 2026](https://silverinstitute.org/wp-content/uploads/2026/04/World-Silver-Survey-2026.pdf#page=11), "Silver Supply and Demand", Industrial (total), printed page 9 / PDF page 11. Its nine annual global flow observations cover 2017-2025 in million troy ounces. The 2026 forecast is excluded; 2025 demand is 657.4 Moz, down 3.2% from the same edition's revised 2024 total of 679.0 Moz.
+
+After confirming the deployment is covered by the approved rights record, set server-only `SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED=true`. To regenerate the bundled snapshot:
+
+```powershell
+cd web
+npm run import:silver
+# Or use a previously downloaded copy of the same official edition:
+npm run import:silver -- "C:\path\to\World-Silver-Survey-2026.pdf"
+```
+
+The importer downloads the pinned report on demand, validates its headings, industrial-total, photovoltaic, mine-production and global ETP rows, excludes forecasts, and writes `web/src/lib/silver-industrial-observations.json` with source URL, pages, edition, retrieval time and PDF SHA-256. It checks that PV demand is a subset of industrial demand before saving the snapshot. It does not save the raw PDF. The PDF extraction dependency is development-only; deployed requests use the bundled snapshot, not an external PDF download. Re-import and rebuild to refresh; this is not a scheduled live API. A new edition requires reviewing the pinned source/page/year schema and tests. Exact publication day and revision status remain unknown.
+
+Annual comparisons require the exact prior calendar year; missing years never fall back to samples. Freshness allows 16 calendar months after year-end (2025 remains fresh through April 2027), then excludes the factor from scoring until refreshed. Industrial demand retains its existing 20% factor weight. Silver's aggregate score now permits partial coverage as described in its scoring policy above.
+
+### Solar silver demand
+
+The same importer now also loads the survey's "of which photovoltaics" sub-row into `solarObservations` in the shared snapshot. It measures global physical silver consumption in PV manufacturing, not installed solar capacity. The nine actual years cover 2017-2025; latest demand is 186.6 Moz in 2025 versus 197.5 Moz in 2024, down 5.5%. Forecasts are excluded.
+
+Enable the approved deployment with server-only `SILVER_SOLAR_DEMAND_PUBLIC_USE_CONFIRMED=true`; this gate is independent of industrial-demand permission. Refresh both series using `npm run import:silver`, then rebuild. PV uses its own `SILVER-SOLAR-DEMAND` provenance and the same annual freshness/comparison rules. Attribution is "The Silver Institute / Metals Focus", with a link to the source report.
+
+PV is a subset of industrial demand, not an additional non-overlapping physical total. The model preserves its existing correlated-factor weights (industrial 20%, solar 15%) and discloses the overlap in the indicator explanations and PV source label.
+
+### Silver Tier 2 feeds
+
+All four Tier 2 indicators are mapped to approved sources, with independent server-side permission flags:
+
+| Indicator | Source and frequency | Permission flag |
+| --- | --- | --- |
+| Global silver ETP holdings (year-end) | World Silver Survey 2026, Appendix 22, printed page 82 / PDF page 84; annual global physically backed ETP stock | `SILVER_ETP_HOLDINGS_PUBLIC_USE_CONFIRMED` |
+| Mine supply | Same survey, Mine Production on PDF page 11; annual global flow | `SILVER_MINE_SUPPLY_PUBLIC_USE_CONFIRMED` |
+| Ten-year breakeven inflation | FRED `T10YIE`; daily percent levels, percentage-point changes | `FRED_T10YIE_PUBLIC_USE_CONFIRMED` |
+| Managed-money net positioning | CFTC `72hh-3qpy`, COMEX Silver contract `084691`, Disaggregated Futures Only; weekly net contracts / 1,000 | `CFTC_COT_SILVER_PUBLIC_USE_CONFIRMED` |
+
+Set each flag to `true` only for deployments covered by its approved rights-register record. FRED also requires the server-side `FRED_API_KEY`. FRED and CFTC fetch without caching; CFTC raw responses are not archived, and FRED archival remains separately gated. Gold continues to use five-year `T5YIE` and contract `088691`.
+
+The owner selected annual global ETP holdings, not a single-fund proxy or live data. The appendix's Total Holdings (Moz) is rounded to whole Moz; it reports 1,318 Moz at end-2025 versus 1,045 Moz at end-2024. Credit The Silver Institute / Metals Focus and the table's sources, respective ETP providers / Bloomberg. Mine output is 846.6 Moz in 2025 versus 823.6 Moz in 2024; recycling and forecasts are excluded. Both series cover 2017-2025 and refresh alongside industrial/solar via `npm run import:silver`, followed by a rebuild. ETP provenance is a year-end stock, not an annual flow. Annual series use the same 16-month lag and exact prior-year comparison policies; daily/weekly feeds use a 14-day freshness limit.
+
+Existing weights remain ETP 10%, mine 10%, breakeven 5%, positioning 5%. Industrial and solar add 35%; approved real rates (20%) and the broad dollar index (15%) bring possible coverage to 100%. Silver no longer requires 80% coverage or particular Tier 1 factors: any positive eligible weight produces a score normalized over available factors, with coverage disclosed. This partial score may differ substantially from the full model. Missing, denied or stale data remain excluded and never fall back to samples. Gold's publication policy is unchanged.
+
+### Copper partial score
+
+The owner selected enabling only the existing FRED real-rate (`DFII10`, 10% weight) and Nominal Broad U.S. Dollar Index (`DTWEXBGS`, 10%) feeds. Their existing server-side public-use flags and `FRED_API_KEY` apply; no new credentials or permission flags are needed. Both use uncached requests, the existing 14-day freshness limit and valid YoY comparisons.
+
+Copper permits any positive eligible coverage, with no minimum-coverage or required-factor publication gates, and normalizes available factor weights to 100%. With both existing feeds healthy, the displayed score covers only 20% of the configured model, not the full copper-demand/supply picture. If one feed is unavailable, the other may still publish at 10% coverage; if neither is eligible, the score remains unavailable. Coverage and excluded original weight remain visible. Refined demand, China PMI, exchange inventories, mine supply, energy-transition demand and Copper CFTC positioning remain unimplemented and excluded; samples never contribute. This change does not implement those six feeds.
+
+### Oil verified feeds and partial score
+
+The owner selected seven verifiable factors, allowing annual OPEC spare capacity while leaving global refinery throughput unavailable:
+
+| Factor / original weight | Source and reporting basis |
+| --- | --- |
+| Global demand / 20% | EIA STEO Table 3a `PATC_WORLD`: world petroleum and other liquids consumption, monthly average million barrels/day |
+| Global supply / 20% | Same table `PAPR_WORLD`: world petroleum and other liquids production, monthly average million barrels/day |
+| Commercial inventories / 15% | Same table `PASC_OECD_T3`: OECD end-of-period commercial crude oil and other liquids stocks, million barrels; not U.S. weekly inventories |
+| Spare capacity / 15% | EIA STEO Fig6 `COPS_OPEC`: OPEC surplus crude oil production capacity, annual-average historical estimates, million barrels/day |
+| Broad dollar / 10% | FRED `DTWEXBGS`, existing permission flag and server-side FRED key; not ICE DXY |
+| Geopolitical risk / 5% | Caldara-Iacoviello monthly Recent GPR, CC BY 4.0; `GPR_CI_PUBLIC_USE_CONFIRMED=true` |
+| WTI positioning / 5% | CFTC `72hh-3qpy`, contract `067651` (WTI Physical, NYMEX), Disaggregated Futures Only, Managed Money long minus short / 1,000; `CFTC_COT_WTI_PUBLIC_USE_CONFIRMED=true` |
+
+EIA public downloads [STEO_m.xlsx](https://www.eia.gov/outlooks/steo/xls/STEO_m.xlsx) and [Fig6.xlsx](https://www.eia.gov/outlooks/steo/xls/Fig6.xlsx) require no EIA key. Both editions must match. Table series/units/scope are validated and only months explicitly marked historical in the `Dates` sheet are accepted. Spare-capacity years require twelve historical months in that calendar; the current year and future forecasts are excluded. These historical figures are EIA estimates, not final measurements. Monthly inputs use a two-calendar-month lag limit; annual capacity uses sixteen months after year-end and exact prior-year comparisons. CFTC/FRED use fourteen-day freshness. Successful EIA downloads are cached for one hour in memory, not archived; request/parser failures are logged and excluded, never replaced with samples. Retrieval dates are not publication dates; exact publication/revision metadata remains unknown. No dependency or EIA API key was added.
+
+With all seven healthy, eligible original coverage is **90%**, not the full eight-factor model. Any positive eligible coverage publishes a normalized partial score; zero yields no score. The remaining 10% refinery factor has no verified accessible global feed and its sample values/charts stay hidden. No U.S.-only or incomplete-country substitute is used. Separate weekly U.S. inventory context still requires `EIA_API_KEY`; the named-contract WTI futures curve remains unavailable.
+
 The default factor score is `clamp(50 + 50 * year_over_year_change * direction / scale, 0, 100)`, comparing observations at the source's reporting frequency. Percentage changes divide by the absolute previous value; legacy annual samples treat a zero prior value as neutral, while sourced zero baselines are unavailable. Percentage-point and index-point changes use the raw difference. With full coverage, the Macro Score is the rounded sum of `factor_score * weight / 100`.
 
 Sourced factors use dated observations and an equivalent reporting-period comparison, not adjacent daily values. FRED missing/blank rows are omitted, never parsed as zero yields. Daily sourced observations older than five calendar days, missing feeds, or unusable YoY comparisons are unavailable. M2 uses the separate monthly policy below. Seeded values are never used as a fallback. Eligible weights are rescaled only after publication gates pass; otherwise aggregate contributions and total are withheld. Score headers disclose eligible approved weight and excluded original weight. Sample/reference weight is a subset of excluded weight, not an additional contribution. Confidence is a separate concept and is not generated for a withheld aggregate.
 
 FRED observations preserve reporting-period start/end and label, source series/provider/URL, raw and normalized units/value conversion, geography, stock/rate semantics, aggregation, seasonal adjustment and retrieval time. The CSV does not supply exact publication times, vintage identifiers or revision status: those fields remain explicitly unknown, not guessed from retrieval or archive-capture time. Forecast-marked, future-release and inconsistent conversion metadata is rejected. The CSV alone is not adequate for publication-vintage historical backtests.
 
-Gold's U.S. M2 factor uses monthly seasonally adjusted `M2SL`, a monthly average stock level in USD billions converted to USD trillions with multiplier 0.001. Its source date identifies the month, not publication; the normalized timeline uses the reporting-period end and the UI displays the reporting month. Monthly/quarterly/YoY comparisons match exact reporting months rather than a nearby previous observation, so missing months are unavailable. M2 freshness requires a completed reference month at most two calendar months behind the current month AND a matching official H.6 release-period check made within the last 24 hours. Unknown/failed/expired release evidence makes health unavailable; a lagging or mismatched feed is stale. Gold's five-year breakeven uses `T5YIE` in percent with point changes; Silver's ten-year breakeven remains a sample and is not silently replaced by the five-year series.
+Gold's U.S. M2 factor uses monthly seasonally adjusted `M2SL`, a monthly average stock level in USD billions converted to USD trillions with multiplier 0.001. Its source date identifies the month, not publication; the normalized timeline uses the reporting-period end and the UI displays the reporting month. Monthly/quarterly/YoY comparisons match exact reporting months rather than a nearby previous observation, so missing months are unavailable. M2 freshness requires a completed reference month at most two calendar months behind the current month AND a matching official H.6 release-period check made within the last 24 hours. Unknown/failed/expired release evidence makes health unavailable; a lagging or mismatched feed is stale. Gold's five-year breakeven uses `T5YIE` in percent with point changes; Silver separately uses ten-year `T10YIE`, also with point changes, never substituted by the five-year series.
 
 ### Release Evidence and Optional Archive
 

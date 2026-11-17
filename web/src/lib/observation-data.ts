@@ -17,7 +17,7 @@ export type ObservationProvenance = {
   normalizedUnit: string;
   multiplier: number;
   seasonalAdjustment: "SA" | "NSA" | "not-applicable";
-  aggregation: "daily-observation" | "weekly-report" | "monthly-average" | "monthly-sum" | "monthly-index" | "month-end";
+  aggregation: "daily-observation" | "weekly-report" | "monthly-average" | "monthly-sum" | "monthly-index" | "month-end" | "annual-total" | "annual-average" | "year-end";
 };
 export type DataObservation = { time: number; value: number; reportingPeriod?: ReportingPeriod; provenance?: ObservationProvenance };
 export type FredSeriesDefinition = {
@@ -33,6 +33,7 @@ export type FredSeriesDefinition = {
 export const fredSeriesDefinitions = {
   DFII10: { seriesId: "DFII10", frequency: "daily", rawUnit: "percent", normalizedUnit: "percent", multiplier: 1, measurement: "rate", seasonalAdjustment: "NSA" },
   T5YIE: { seriesId: "T5YIE", frequency: "daily", rawUnit: "percent", normalizedUnit: "percent", multiplier: 1, measurement: "rate", seasonalAdjustment: "NSA" },
+  T10YIE: { seriesId: "T10YIE", frequency: "daily", rawUnit: "percent", normalizedUnit: "percent", multiplier: 1, measurement: "rate", seasonalAdjustment: "NSA" },
   M2SL: { seriesId: "M2SL", frequency: "monthly", rawUnit: "USD billions", normalizedUnit: "USD trillions", multiplier: 0.001, measurement: "stock", seasonalAdjustment: "SA" },
   DTWEXBGS: { seriesId: "DTWEXBGS", frequency: "daily", rawUnit: "index points (Jan 2006=100)", normalizedUnit: "index points", multiplier: 1, measurement: "index", seasonalAdjustment: "NSA" },
 } satisfies Record<string, FredSeriesDefinition>;
@@ -125,5 +126,14 @@ export function monthlyPeriodIsRecent(point: DataObservation, checkedAt: number,
   const now = new Date(checkedAt * 1000);
   if (!Number.isFinite(start.getTime()) || !Number.isFinite(now.getTime())) return false;
   const lag = (now.getUTCFullYear() - start.getUTCFullYear()) * 12 + now.getUTCMonth() - start.getUTCMonth();
+  return lag >= 1 && lag <= maxLagMonths && point.time <= checkedAt;
+}
+
+export function annualPeriodIsRecent(point: DataObservation, checkedAt: number, maxLagMonths: number) {
+  const period = point.reportingPeriod;
+  if (period?.frequency !== "annual" || !/^\d{4}-01-01$/.test(period.start)
+    || period.end !== `${period.start.slice(0, 4)}-12-31`) return false;
+  const now = new Date(checkedAt * 1000);
+  const lag = (now.getUTCFullYear() - Number(period.start.slice(0, 4))) * 12 + now.getUTCMonth() - 11;
   return lag >= 1 && lag <= maxLagMonths && point.time <= checkedAt;
 }

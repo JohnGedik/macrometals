@@ -14,6 +14,13 @@ process.env.FRED_API_KEY = "test-api-key";
 process.env.WGC_CENTRAL_BANK_GOLD_PUBLIC_USE_CONFIRMED = "false";
 process.env.WGC_GOLD_ETF_PUBLIC_USE_CONFIRMED = "false";
 process.env.GPR_CI_PUBLIC_USE_CONFIRMED = "false";
+process.env.SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED = "false";
+process.env.SILVER_SOLAR_DEMAND_PUBLIC_USE_CONFIRMED = "false";
+process.env.SILVER_MINE_SUPPLY_PUBLIC_USE_CONFIRMED = "false";
+process.env.SILVER_ETP_HOLDINGS_PUBLIC_USE_CONFIRMED = "false";
+process.env.FRED_T10YIE_PUBLIC_USE_CONFIRMED = "false";
+process.env.CFTC_COT_SILVER_PUBLIC_USE_CONFIRMED = "false";
+process.env.CFTC_COT_WTI_PUBLIC_USE_CONFIRMED = "false";
 
 const aliases = registerHooks({
   resolve(specifier, context, nextResolve) {
@@ -32,13 +39,16 @@ const { commodityConfigurations, getCommodityConfiguration } = await import("./c
 const { getMacroIndicators, getCommodityHeaderData } = await import("./indicators.ts");
 const { countActiveIndicators, generateMacroSummary } = await import("./macro-summary.ts");
 const { hydrateCommodityObservations } = await import("./commodity-data.ts");
-const { availableObservation, parseFredObservations, fredSeriesDefinitions, monthlyPeriodIsRecent } = await import("./observation-data.ts");
+const { availableObservation, parseFredObservations, fredSeriesDefinitions, monthlyPeriodIsRecent, annualPeriodIsRecent, periodComparison } = await import("./observation-data.ts");
+const { parseSilverIndustrialTable, parseSilverSolarTable, parseSilverMineTable, parseSilverEtpTable, silverIndustrialObservations } = await import("./silver-industrial-parser.ts");
+const { silverIndustrialFeed, silverSolarFeed, silverMineFeed, silverEtpFeed } = await import("./silver-industrial-observations.ts");
 const { createSourceSnapshot, verifySourceSnapshot, snapshotChanges, snapshotKnownAt } = await import("./source-snapshots.ts");
 const { archiveSourceSnapshot, archivedSnapshotKnownAt } = await import("./snapshot-archive.ts");
 const { latestH6Release, compareH6Release } = await import("./release-evidence.ts");
 const { getSourceRights } = await import("./source-rights.ts");
-const { parseCftcGoldManagedMoney, cftcGoldCotSeriesId } = await import("./cftc-cot.ts");
+const { parseCftcGoldManagedMoney, parseCftcManagedMoney, cftcCotDefinitions, cftcGoldCotSeriesId } = await import("./cftc-cot.ts");
 const { parseRecentGprRows, gprSeriesId, gprDownloadUrl } = await import("./gpr.ts");
+const { parseSteoOil, parseEiaSpareCapacity, eiaOilDefinitions, steoOilUrl, spareCapacityUrl } = await import("./eia-oil-parser.ts");
 const XLSX = await import("@e965/xlsx");
 const { currentGoldSeasonality, goldSeasonalityProfile } = await import("./gold-macro-data.ts");
 const { derivedDataHealth, currentStressIndex, stressIndexAt } = await import("./derived-data.ts");
@@ -131,18 +141,465 @@ test("coverage and critical-factor gates withhold totals and driver contribution
   assert.equal(scoreCommodity(publicFixture()).publishable, true);
 });
 
-test("registered public commodities approve only explicitly cleared Gold factors", () => {
+test("registered public commodities approve only explicitly cleared factors", () => {
   for (const config of Object.values(commodityConfigurations)) {
     const result = scoreCommodity(config);
     assert.equal(result.policy.mode, "sourced-only");
-    assert.equal(result.policy.minimumCoverage, 80);
-    assert.ok(result.policy.requiredIndicators.length > 0);
+    const partialCoverage = ["silver", "copper", "oil"].includes(config.commodity);
+    assert.equal(result.policy.minimumCoverage, partialCoverage ? 0 : 80);
+    assert.equal(result.policy.requiredIndicators.length === 0, partialCoverage);
     assert.deepEqual(result.policy.approvedIndicators, config.commodity === "gold"
-      ? ["gold-seasonality", "real-rates", "dxy", "breakeven", "central-bank-purchases", "etf-holdings", "cot-positioning"] : []);
+      ? ["gold-seasonality", "real-rates", "dxy", "breakeven", "central-bank-purchases", "etf-holdings", "cot-positioning"]
+      : config.commodity === "silver" ? ["industrial-demand", "solar-demand", "etf-holdings", "mine-supply", "breakeven", "cot-positioning", "real-rates", "dxy"]
+      : config.commodity === "copper" ? ["dxy", "real-rates"]
+      : ["global-demand", "global-supply", "commercial-inventories", "spare-capacity", "dxy", "geopolitical-risk", "cot-positioning"]);
     assert.equal(result.score, null);
     assert.equal(result.coverage, config.commodity === "gold" ? 5 : 0);
     assert.ok(result.indicators.filter((indicator) => indicator.id !== "gold-seasonality").every((indicator) => indicator.score === null));
     if (config.commodity === "gold") assert.ok(result.indicators.find((indicator) => indicator.id === "gold-seasonality").score !== null);
+  }
+});
+
+test("Copper publishes only its existing FRED factors with disclosed partial coverage and no sample fallback", async () => {
+  const originalNow = Date.now;
+  const originalFetch = globalThis.fetch;
+  const flags = ["FRED_DFII10_PUBLIC_USE_CONFIRMED", "FRED_DTWEXBGS_PUBLIC_USE_CONFIRMED"];
+  const previous = Object.fromEntries(flags.map((flag) => [flag, process.env[flag]]));
+  Date.now = () => Date.parse("2026-11-18T16:00:00Z");
+  for (const flag of flags) process.env[flag] = "true";
+  const requested = [];
+  globalThis.fetch = async (raw, options) => {
+    const url = new URL(String(raw));
+    assert.equal(url.hostname, "api.stlouisfed.org");
+    assert.equal(options.cache, "no-store");
+    const id = url.searchParams.get("series_id");
+    requested.push(id);
+    assert.ok(["DFII10", "DTWEXBGS"].includes(id));
+    return fredResponse(id, id === "DFII10"
+      ? [["2025-11-14", 1], ["2026-11-16", 2]]
+      : [["2025-11-14", 100], ["2026-11-16", 95]]);
+  };
+  const config = { ...commodityConfigurations.copper, contextProvider: undefined };
+  try {
+    const dashboard = await getMacroIndicators(config, "en");
+    assert.deepEqual(requested.toSorted(), ["DFII10", "DTWEXBGS"]);
+    assert.equal(dashboard.cards.find((card) => card.id === "dxy").name, "Nominal Broad U.S. Dollar Index (DTWEXBGS)");
+    assert.equal(dashboard.summary.score, 50);
+    assert.equal(dashboard.summary.coverage, 20);
+    assert.deepEqual(dashboard.summary.dataMix, { sourcedWeight: 20, sampleWeight: 0, excludedWeight: 80 });
+    assert.equal(dashboard.summary.release.minimumCoverage, 0);
+    assert.deepEqual(dashboard.summary.release.missingRequired, []);
+    assert.ok(dashboard.cards.filter((card) => ["dxy", "real-rates"].includes(card.id))
+      .every((card) => card.dataHealth.status === "fresh" && card.scoreExclusion === null));
+    assert.ok(dashboard.cards.filter((card) => !["dxy", "real-rates"].includes(card.id))
+      .every((card) => card.value === "—" && card.factorScore === null && card.chart.points.length === 0));
+    process.env.FRED_DFII10_PUBLIC_USE_CONFIRMED = "false";
+    const partial = await getMacroIndicators(config, "en");
+    assert.equal(partial.summary.coverage, 10);
+    assert.equal(partial.summary.score, 100);
+    process.env.FRED_DFII10_PUBLIC_USE_CONFIRMED = "true";
+    Date.now = () => Date.parse("2026-12-01T16:00:00Z");
+    const stale = await getMacroIndicators(config, "en");
+    assert.equal(stale.summary.score, null);
+    assert.equal(stale.summary.coverage, 0);
+    for (const flag of flags) process.env[flag] = "false";
+    requested.length = 0;
+    const denied = await getMacroIndicators(config, "en");
+    assert.equal(denied.summary.score, null);
+    assert.equal(denied.summary.coverage, 0);
+    assert.deepEqual(requested, []);
+  } finally {
+    Date.now = originalNow;
+    globalThis.fetch = originalFetch;
+    for (const flag of flags) {
+      if (previous[flag] === undefined) delete process.env[flag];
+      else process.env[flag] = previous[flag];
+    }
+  }
+});
+
+const silverTable = `World Silver Survey 2026
+Silver Supply and Demand
+Million ounces 2017 2018 2019 2020 2021 2022 2023 2024 2025 2026F 2025 2026F
+Supply
+Mine Production 862.7 850.3 837.3 790.3 825.4 833.7 810.7 823.6 846.6 844.1 3% -0.3%
+Demand
+Industrial (total) 528.0 525.8 525.4 511.9 564.1 592.3 657.1 679.0 657.4 639.6 -3% -3%
+Electrical & Electronics 339.1 330.4 326.7 321.4 350.7 370.7 444.4 460.9 449.5 422.9 -2% -6%\u2026of which photovoltaics 99.3 87.0 74.9 82.8 88.9 118.1 192.7 197.5 186.6 151.0 -6% -19%
+Other Industrial 138.0 143.5 146.4 142.9 162.9 172.4 162.6 168.4 157.4 165.7 -7% 5%
+Total Demand 971.5 999.7 1005.8 929.0 1102.4 1284.1 1197.0 1157.4 1130.6 1112.6 -2% -2%
+Source: Metals Focus`;
+
+test("silver importer extracts only industrial totals and excludes forecast/YoY columns", () => {
+  const rows = parseSilverIndustrialTable(silverTable);
+  assert.equal(rows.length, 9);
+  assert.deepEqual(rows.at(-2), [2024, 679]);
+  assert.deepEqual(rows.at(-1), [2025, 657.4]);
+  assert.ok(rows.every(([year]) => year < 2026));
+  for (const invalid of [
+    silverTable.replace("Million ounces", "Tonnes"),
+    silverTable.replace("Industrial (total)", "Industrial"),
+    silverTable.replace("2026F 2025", "2026 2025"),
+    silverTable.replace("657.4 639.6", "NaN 639.6"),
+    silverTable.replace("657.4 639.6", "-1 639.6"),
+    silverTable.replace("679.0 ", ""),
+    `${silverTable}\nIndustrial (total) 10`,
+  ]) assert.throws(() => parseSilverIndustrialTable(invalid), /table/);
+  const latest = silverIndustrialFeed.at(-1);
+  assert.equal(latest.value, rows.at(-1)[1]);
+  assert.equal(latest.provenance.vintage, "World Silver Survey 2026");
+  assert.equal(latest.provenance.publishedAt, null);
+  assert.equal(latest.provenance.aggregation, "annual-total");
+  assert.equal(latest.provenance.normalizedUnit, "million troy ounces");
+  assert.equal(latest.reportingPeriod.start, "2025-01-01");
+  assert.equal(latest.reportingPeriod.end, "2025-12-31");
+  assert.throws(() => silverIndustrialObservations({}), /snapshot/);
+});
+
+test("annual industrial demand has exact prior-year comparisons and a spring release allowance", () => {
+  const latest = silverIndustrialFeed.at(-1);
+  const prior = periodComparison(latest, silverIndustrialFeed, 12);
+  assert.equal(prior.value, 679);
+  assert.ok(Math.abs((latest.value / prior.value - 1) * 100 - -3.18114874815906) < 1e-10);
+  assert.equal(periodComparison(latest, silverIndustrialFeed.filter((point) => point !== prior), 12), null);
+  assert.equal(periodComparison(latest, silverIndustrialFeed, 3), null);
+  assert.equal(annualPeriodIsRecent(latest, Date.parse("2026-11-17") / 1000, 16), true);
+  assert.equal(annualPeriodIsRecent(latest, Date.parse("2027-04-30") / 1000, 16), true);
+  assert.equal(annualPeriodIsRecent(latest, Date.parse("2027-05-01") / 1000, 16), false);
+  assert.equal(annualPeriodIsRecent(latest, Date.parse("2025-12-01") / 1000, 16), false);
+  assert.equal(annualPeriodIsRecent({ ...latest, reportingPeriod: { ...latest.reportingPeriod, start: "2025-02-01" } }, Date.parse("2026-11-17") / 1000, 16), false);
+});
+
+test("silver rights, freshness and provenance gates never fall back to seeded industrial demand", () => {
+  const config = commodityConfigurations.silver;
+  const checkedAt = Date.parse("2026-11-18") / 1000;
+  const feed = { "silver-industrial-demand": silverIndustrialFeed };
+  const demand = (resolved) => resolved.indicators.find((metric) => metric.id === "industrial-demand");
+  process.env.SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED = "true";
+  try {
+    const resolved = hydrateCommodityObservations(config, feed, checkedAt);
+    assert.equal(demand(resolved).dataHealth.status, "fresh");
+    const result = scoreCommodity(resolved);
+    assert.equal(result.coverage, 20);
+    assert.equal(result.score, 34);
+    const industrial = result.indicators.find((metric) => metric.id === "industrial-demand");
+    assert.equal(industrial.current, 657.4);
+    assert.notEqual(industrial.score, null);
+    const stale = hydrateCommodityObservations(config, feed, Date.parse("2027-05-01") / 1000);
+    assert.equal(demand(stale).dataHealth.status, "stale");
+    assert.equal(scoreCommodity(stale).coverage, 0);
+    const latest = silverIndustrialFeed.at(-1);
+    for (const provenance of [
+      { ...latest.provenance, valueType: "forecast" },
+      { ...latest.provenance, measurement: "stock" },
+      { ...latest.provenance, geography: "United States" },
+      { ...latest.provenance, aggregation: "monthly-sum" },
+    ]) {
+      const rejected = hydrateCommodityObservations(config, { "silver-industrial-demand": [{ ...latest, provenance }] }, checkedAt);
+      assert.equal(demand(rejected).dataHealth.status, "unavailable");
+      assert.deepEqual(demand(rejected).observations, []);
+    }
+    const missing = hydrateCommodityObservations(config, {}, checkedAt);
+    assert.equal(scoreCommodity(missing).indicators.find((metric) => metric.id === "industrial-demand").current, null);
+    process.env.SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED = "false";
+    const denied = hydrateCommodityObservations(config, feed, checkedAt);
+    assert.deepEqual(demand(denied).observations, []);
+    assert.equal(demand(denied).dataHealth.rights[0].status, "review-required");
+    assert.equal(scoreCommodity(denied).coverage, 0);
+  } finally { process.env.SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED = "false"; }
+});
+
+test("Silver dashboard renders published industrial demand and a partial-coverage score", async () => {
+  const originalNow = Date.now;
+  Date.now = () => Date.parse("2026-11-18");
+  process.env.SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED = "true";
+  try {
+    const dashboard = await getMacroIndicators({
+      ...commodityConfigurations.silver, contextProvider: undefined,
+      scoreSources: { "industrial-demand": "silver-industrial-demand" },
+    }, "en");
+    const card = dashboard.cards.find((metric) => metric.id === "industrial-demand");
+    assert.equal(card.value, "657.4 Moz");
+    assert.equal(card.previousValue, "679.0 Moz");
+    assert.equal(card.yoyChange, "-3.2%");
+    assert.equal(card.chart.points.length, 9);
+    assert.equal(card.dataHealth.reportingPeriod.label, "2025");
+    assert.equal(card.dataHealth.status, "fresh");
+    assert.equal(card.scoreExclusion, null);
+    assert.equal(dashboard.summary.coverage, 20);
+    assert.equal(dashboard.summary.score, 34);
+  } finally {
+    Date.now = originalNow;
+    process.env.SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED = "false";
+  }
+});
+
+test("solar parser extracts physical PV consumption from the joined PDF sub-row, excluding forecasts and other demand", () => {
+  const rows = parseSilverSolarTable(silverTable);
+  assert.equal(rows.length, 9);
+  assert.deepEqual(rows.at(-2), [2024, 197.5]);
+  assert.deepEqual(rows.at(-1), [2025, 186.6]);
+  assert.deepEqual(rows, silverSolarFeed.map((point) => [Number(point.reportingPeriod.label), point.value]));
+  assert.deepEqual(parseSilverSolarTable(silverTable.replace("\u2026of which", "\nof which")), rows);
+  for (const invalid of [
+    silverTable.replace("of which photovoltaics", "installed solar capacity"),
+    silverTable.replace("Million ounces", "Gigawatts"),
+    silverTable.replace("197.5 186.6", "197.5 NaN"),
+    silverTable.replace("186.6 151.0", "186.6"),
+    silverTable.replace("2026F 2025", "2026 2025"),
+    `${silverTable}\nof which photovoltaics 10`,
+  ]) assert.throws(() => parseSilverSolarTable(invalid), /table/);
+  const latest = silverSolarFeed.at(-1);
+  assert.equal(latest.provenance.seriesId, "SILVER-SOLAR-DEMAND");
+  assert.equal(latest.provenance.measurement, "flow");
+  assert.equal(latest.provenance.aggregation, "annual-total");
+  assert.equal(latest.provenance.normalizedUnit, "million troy ounces");
+  assert.equal(latest.provenance.vintage, "World Silver Survey 2026");
+});
+
+test("solar demand uses its own rights gate and excludes missing, stale, forecast and wrong-series data without sample fallback", () => {
+  const config = commodityConfigurations.silver;
+  const checkedAt = Date.parse("2026-11-18") / 1000;
+  const feeds = { "silver-industrial-demand": silverIndustrialFeed, "silver-solar-demand": silverSolarFeed };
+  const solar = (resolved) => resolved.indicators.find((metric) => metric.id === "solar-demand");
+  process.env.SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED = "true";
+  try {
+    const denied = hydrateCommodityObservations(config, feeds, checkedAt);
+    assert.deepEqual(solar(denied).observations, []);
+    assert.equal(solar(denied).dataHealth.rights[0].status, "review-required");
+    assert.equal(scoreCommodity(denied).coverage, 20);
+    process.env.SILVER_SOLAR_DEMAND_PUBLIC_USE_CONFIRMED = "true";
+    const resolved = hydrateCommodityObservations(config, feeds, checkedAt);
+    assert.equal(solar(resolved).dataHealth.status, "fresh");
+    assert.equal(scoreCommodity(resolved).coverage, 35);
+    assert.equal(scoreCommodity(resolved).score, 35);
+    assert.equal(config.weights["industrial-demand"], 20);
+    assert.equal(config.weights["solar-demand"], 15);
+    const latest = silverSolarFeed.at(-1);
+    for (const points of [
+      [],
+      silverIndustrialFeed,
+      [{ ...latest, provenance: { ...latest.provenance, valueType: "forecast" } }],
+    ]) {
+      const rejected = hydrateCommodityObservations(config, { "silver-solar-demand": points }, checkedAt);
+      assert.equal(solar(rejected).dataHealth.status, "unavailable");
+      assert.deepEqual(solar(rejected).observations, []);
+      assert.equal(scoreCommodity(rejected).indicators.find((metric) => metric.id === "solar-demand").current, null);
+    }
+    const stale = hydrateCommodityObservations(config, feeds, Date.parse("2027-05-01") / 1000);
+    assert.equal(solar(stale).dataHealth.status, "stale");
+    assert.equal(scoreCommodity(stale).coverage, 0);
+    const gap = hydrateCommodityObservations(config, {
+      "silver-solar-demand": silverSolarFeed.filter((point) => point.reportingPeriod.label !== "2024"),
+    }, checkedAt);
+    assert.equal(scoreCommodity(gap).indicators.find((metric) => metric.id === "solar-demand").score, null);
+    process.env.SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED = "false";
+    assert.equal(scoreCommodity(hydrateCommodityObservations(config, feeds, checkedAt)).coverage, 15);
+  } finally {
+    process.env.SILVER_SOLAR_DEMAND_PUBLIC_USE_CONFIRMED = "false";
+    process.env.SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED = "false";
+  }
+});
+
+test("Silver dashboard displays actual solar demand and a partial-coverage score in both locales", async () => {
+  const originalNow = Date.now;
+  Date.now = () => Date.parse("2026-11-18");
+  process.env.SILVER_SOLAR_DEMAND_PUBLIC_USE_CONFIRMED = "true";
+  process.env.SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED = "true";
+  try {
+    for (const locale of ["en", "tr"]) {
+      const dashboard = await getMacroIndicators({
+        ...commodityConfigurations.silver, contextProvider: undefined,
+        scoreSources: { "industrial-demand": "silver-industrial-demand", "solar-demand": "silver-solar-demand" },
+      }, locale);
+      const card = dashboard.cards.find((metric) => metric.id === "solar-demand");
+      assert.equal(card.value, locale === "en" ? "186.6 Moz" : "186,6 milyon ons");
+      assert.equal(card.previousValue, locale === "en" ? "197.5 Moz" : "197,5 milyon ons");
+      assert.equal(card.yoyChange, locale === "en" ? "-5.5%" : "-5,5%");
+      assert.equal(card.chart.points.length, 9);
+      assert.equal(card.dataHealth.reportingPeriod.label, "2025");
+      assert.equal(card.dataHealth.frequency, "annual");
+      assert.equal(card.dataHealth.status, "fresh");
+      assert.ok(card.dataHealth.source.includes("included in industrial demand"));
+      assert.equal(card.scoreExclusion, null);
+      assert.equal(dashboard.summary.coverage, 35);
+      assert.equal(dashboard.summary.score, 35);
+      assert.equal(dashboard.summary.release.minimumCoverage, 0);
+      assert.deepEqual(dashboard.summary.release.missingRequired, []);
+    }
+  } finally {
+    Date.now = originalNow;
+    process.env.SILVER_SOLAR_DEMAND_PUBLIC_USE_CONFIRMED = "false";
+    process.env.SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED = "false";
+  }
+});
+
+const silverEtpTable = `World Silver Survey 2026
+Appendix 22 - Physically Backed Silver Exchange-Traded Product Holdings*
+Moz
+Year/Month iShares Silver Trust ZKB WisdomTree Sprott Silver Sprott Gold & Silver India Others Total Holdings (Moz) Total Value ($M)
+2016 341 72 53 56 76 n/a 69 667 10,827
+2017 321 80 60 56 75 n/a 82 674 11,364
+2018 317 79 52 56 64 n/a 84 652 10,090
+2019 363 83 69 60 58 n/a 103 736 13,276
+2020 559 93 94 91 60 n/a 170 1,067 28,255
+2021 531 100 95 154 60 n/a 191 1,132 26,127
+2022 467 96 61 171 58 8 153 1,014 24,290
+2023 437 100 53 171 57 13 146 977 23,237
+2024 462 87 48 181 54 44 168 1,045 30,194
+2025 529 98 53 211 52 113 263 1,318 94,855
+Feb-26 514 89 46 217 52 122** 371 1,288 115,887
+*Holdings at end-period; value calculated basis end-period price, ** One element estimated.
+Source: Respective ETP providers, Bloomberg`;
+
+test("Silver survey Tier 2 parsers select world mine output and global year-end physical ETP stock, not forecasts or dollar values", () => {
+  const mine = parseSilverMineTable(silverTable);
+  assert.deepEqual(mine.at(-1), [2025, 846.6]);
+  assert.deepEqual(mine.at(-2), [2024, 823.6]);
+  assert.deepEqual(mine, silverMineFeed.map((point) => [Number(point.reportingPeriod.label), point.value]));
+  assert.throws(() => parseSilverMineTable(silverTable.replace("Mine Production", "Total Supply")), /table/);
+  const etp = parseSilverEtpTable(silverEtpTable);
+  assert.equal(etp.length, 9);
+  assert.deepEqual(etp.at(-1), [2025, 1318]);
+  assert.deepEqual(etp.at(-2), [2024, 1045]);
+  assert.deepEqual(etp, silverEtpFeed.map((point) => [Number(point.reportingPeriod.label), point.value]));
+  for (const invalid of [
+    silverEtpTable.replace("Total Holdings (Moz) Total Value ($M)", "Total Value ($M) Total Holdings (Moz)"),
+    silverEtpTable.replace("1,318 94,855", "n/a 94,855"),
+    silverEtpTable.replace("1,318 94,855", "1,318"),
+    silverEtpTable.replace("2024 462", "2023 462"),
+    silverEtpTable.replace("Physically Backed", "Leveraged"),
+  ]) assert.throws(() => parseSilverEtpTable(invalid), /table/);
+  assert.equal(silverEtpFeed.at(-1).provenance.measurement, "stock");
+  assert.equal(silverEtpFeed.at(-1).provenance.aggregation, "year-end");
+  assert.ok(silverEtpFeed.at(-1).provenance.sourceUrl.endsWith("#page=84"));
+  assert.equal(silverMineFeed.at(-1).provenance.measurement, "flow");
+  assert.equal(silverMineFeed.at(-1).provenance.aggregation, "annual-total");
+});
+
+test("Silver mine and ETP feeds enforce independent rights, stock/flow semantics, annual freshness and exact prior years", () => {
+  const flags = ["SILVER_MINE_SUPPLY_PUBLIC_USE_CONFIRMED", "SILVER_ETP_HOLDINGS_PUBLIC_USE_CONFIRMED"];
+  const feeds = { "silver-mine-supply": silverMineFeed, "silver-etp-holdings": silverEtpFeed };
+  const checkedAt = Date.parse("2026-11-18") / 1000;
+  const tier2 = (resolved) => resolved.indicators.filter((metric) => ["mine-supply", "etf-holdings"].includes(metric.id));
+  try {
+    const denied = hydrateCommodityObservations(commodityConfigurations.silver, feeds, checkedAt);
+    assert.ok(tier2(denied).every((metric) => metric.observations.length === 0 && metric.dataHealth.status === "unavailable"));
+    for (const flag of flags) process.env[flag] = "true";
+    const resolved = hydrateCommodityObservations(commodityConfigurations.silver, feeds, checkedAt);
+    assert.ok(tier2(resolved).every((metric) => metric.dataHealth.status === "fresh"));
+    assert.equal(scoreCommodity(resolved).coverage, 20);
+    assert.equal(scoreCommodity(resolved).score, 61);
+    const stale = hydrateCommodityObservations(commodityConfigurations.silver, feeds, Date.parse("2027-05-01") / 1000);
+    assert.ok(tier2(stale).every((metric) => metric.dataHealth.status === "stale"));
+    assert.equal(scoreCommodity(stale).coverage, 0);
+    const missingYear = hydrateCommodityObservations(commodityConfigurations.silver, {
+      "silver-etp-holdings": silverEtpFeed.filter((point) => point.reportingPeriod.label !== "2024"),
+    }, checkedAt);
+    assert.equal(scoreCommodity(missingYear).indicators.find((metric) => metric.id === "etf-holdings").score, null);
+    const latest = silverEtpFeed.at(-1);
+    for (const provenance of [
+      { ...latest.provenance, measurement: "flow" },
+      { ...latest.provenance, aggregation: "annual-total" },
+      { ...latest.provenance, valueType: "forecast" },
+    ]) {
+      const rejected = hydrateCommodityObservations(commodityConfigurations.silver, {
+        "silver-etp-holdings": [{ ...latest, provenance }],
+      }, checkedAt);
+      assert.equal(tier2(rejected).find((metric) => metric.id === "etf-holdings").observations.length, 0);
+    }
+  } finally { for (const flag of flags) process.env[flag] = "false"; }
+});
+
+test("Silver CFTC parsing keeps COMEX Silver separate from Gold and preserves negative managed-money net positions", () => {
+  const row = { cftc_contract_market_code: "084691", report_date_as_yyyy_mm_dd: "2026-11-10T00:00:00.000",
+    m_money_positions_long_all: "17182", m_money_positions_short_all: "13567" };
+  const asOf = Date.parse("2026-11-18") / 1000;
+  const parsed = parseCftcManagedMoney([row], cftcCotDefinitions.silver, asOf);
+  assert.equal(parsed[0].value, 3.615);
+  assert.equal(parsed[0].provenance.seriesId, cftcCotDefinitions.silver.seriesId);
+  assert.equal(parsed[0].reportingPeriod.frequency, "weekly");
+  assert.deepEqual(parseCftcGoldManagedMoney([row], asOf), []);
+  assert.deepEqual(parseCftcManagedMoney([{ ...row, cftc_contract_market_code: "088691" }], cftcCotDefinitions.silver, asOf), []);
+  assert.equal(parseCftcManagedMoney([{ ...row, m_money_positions_long_all: "10000" }], cftcCotDefinitions.silver, asOf)[0].value, -3.567);
+  assert.deepEqual(parseCftcManagedMoney([{ ...row, m_money_positions_long_all: "invalid" }], cftcCotDefinitions.silver, asOf), []);
+});
+
+test("Silver enables all eight sourced factors and publishes with full or partial coverage, but not zero coverage", async () => {
+  const flags = ["SILVER_INDUSTRIAL_DEMAND_PUBLIC_USE_CONFIRMED", "SILVER_SOLAR_DEMAND_PUBLIC_USE_CONFIRMED",
+    "SILVER_MINE_SUPPLY_PUBLIC_USE_CONFIRMED", "SILVER_ETP_HOLDINGS_PUBLIC_USE_CONFIRMED",
+    "FRED_T10YIE_PUBLIC_USE_CONFIRMED", "CFTC_COT_SILVER_PUBLIC_USE_CONFIRMED",
+    "FRED_DFII10_PUBLIC_USE_CONFIRMED", "FRED_DTWEXBGS_PUBLIC_USE_CONFIRMED"];
+  const previousFlags = Object.fromEntries(flags.map((flag) => [flag, process.env[flag]]));
+  const originalNow = Date.now;
+  const originalFetch = globalThis.fetch;
+  Date.now = () => Date.parse("2026-11-18T16:00:00Z");
+  for (const flag of flags) process.env[flag] = "true";
+  const requested = [];
+  globalThis.fetch = async (raw, options) => {
+    const url = new URL(String(raw));
+    assert.equal(options.cache, "no-store");
+    if (url.hostname === "api.stlouisfed.org") {
+      const series = url.searchParams.get("series_id");
+      requested.push(series);
+      if (series === "DFII10") return fredResponse(series, [["2025-11-14", 1], ["2026-11-16", 2]]);
+      if (series === "DTWEXBGS") return fredResponse(series, [["2025-11-14", 100], ["2026-11-16", 95]]);
+      assert.equal(series, "T10YIE");
+      return fredResponse(series, [["2025-11-14", 2], ["2026-11-16", 2.25]]);
+    }
+    assert.equal(url.hostname, "publicreporting.cftc.gov");
+    assert.ok(url.searchParams.get("$where").includes("084691"));
+    requested.push("silver-cot");
+    return Response.json([
+      { cftc_contract_market_code: "084691", report_date_as_yyyy_mm_dd: "2026-11-10", m_money_positions_long_all: "30000", m_money_positions_short_all: "10000" },
+      { cftc_contract_market_code: "084691", report_date_as_yyyy_mm_dd: "2025-11-04", m_money_positions_long_all: "10000", m_money_positions_short_all: "5000" },
+    ]);
+  };
+  const config = { ...commodityConfigurations.silver, contextProvider: undefined };
+  try {
+    const dashboard = await getMacroIndicators(config, "en");
+    const cards = Object.fromEntries(dashboard.cards.map((card) => [card.id, card]));
+    assert.deepEqual(requested.toSorted(), ["DFII10", "DTWEXBGS", "T10YIE", "silver-cot"]);
+    assert.equal(cards["etf-holdings"].value, "1,318.0 Moz");
+    assert.equal(cards["etf-holdings"].previousValue, "1,045.0 Moz");
+    assert.equal(cards["etf-holdings"].yoyChange, "+26.1%");
+    assert.equal(cards["mine-supply"].value, "846.6 Moz");
+    assert.equal(cards["mine-supply"].yoyChange, "+2.8%");
+    assert.equal(cards.breakeven.value, "2.25%");
+    assert.equal(cards.breakeven.yoyChange, "+0.25 pp");
+    assert.equal(cards.breakeven.dataHealth.provenance.seriesId, "T10YIE");
+    assert.equal(cards["cot-positioning"].value, "20k");
+    assert.equal(cards["cot-positioning"].dataHealth.provenance.seriesId, cftcCotDefinitions.silver.seriesId);
+    for (const id of ["etf-holdings", "mine-supply", "breakeven", "cot-positioning"]) {
+      assert.equal(cards[id].group, "tier2");
+      assert.equal(cards[id].dataHealth.status, "fresh");
+      assert.equal(cards[id].scoreExclusion, null);
+    }
+    for (const id of ["real-rates", "dxy"]) assert.equal(cards[id].scoreExclusion, null);
+    assert.equal(dashboard.summary.coverage, 100);
+    assert.equal(dashboard.summary.score, 49);
+    assert.equal(dashboard.summary.release.minimumCoverage, 0);
+    assert.deepEqual(dashboard.summary.release.missingRequired, []);
+    process.env.FRED_DFII10_PUBLIC_USE_CONFIRMED = "false";
+    process.env.FRED_DTWEXBGS_PUBLIC_USE_CONFIRMED = "false";
+    const partial = await getMacroIndicators(config, "en");
+    assert.equal(partial.summary.coverage, 65);
+    assert.equal(partial.summary.score, 53);
+    assert.deepEqual(partial.summary.dataMix, { sourcedWeight: 65, sampleWeight: 0, excludedWeight: 35 });
+    for (const flag of flags) process.env[flag] = "false";
+    requested.length = 0;
+    const denied = await getMacroIndicators(config, "en");
+    assert.deepEqual(requested, []);
+    assert.ok(denied.cards.filter((card) => card.group === "tier2").every((card) => card.value === "—" && card.chart.points.length === 0));
+    assert.equal(denied.summary.coverage, 0);
+    assert.equal(denied.summary.score, null);
+  } finally {
+    Date.now = originalNow;
+    globalThis.fetch = originalFetch;
+    for (const flag of flags) {
+      if (previousFlags[flag] === undefined) delete process.env[flag];
+      else process.env[flag] = previousFlags[flag];
+    }
   }
 });
 
@@ -198,7 +655,7 @@ test("public dashboards hide samples with undocumented origins while excluding t
     assert.deepEqual(dashboard.summary.dataMix, config.commodity === "gold"
       ? { sourcedWeight: 5, sampleWeight: 0, excludedWeight: 95 }
       : { sourcedWeight: 0, sampleWeight: 0, excludedWeight: 100 });
-    assert.equal(dashboard.summary.release.approvedCount, config.commodity === "gold" ? 7 : 0);
+    assert.equal(dashboard.summary.release.approvedCount, config.commodity === "silver" ? 8 : config.commodity === "copper" ? 2 : 7);
     assert.equal(dashboard.summary.release.referenceSampleWeight, config.commodity === "gold" ? 95 : 100);
     const seasonality = dashboard.cards.find((card) => card.id === "gold-seasonality");
     const unverifiedSamples = dashboard.cards.filter((card) => card.id !== "gold-seasonality");
@@ -372,7 +829,7 @@ test("GPR parser selects only the monthly Recent GPR index and retains its vinta
   assert.deepEqual(parseRecentGprRows(otherVariant, retrievedAt), []);
 });
 
-test("Gold and Oil hydrate the licensed GPR workbook as sourced monthly data without scoring approval", async () => {
+test("Gold displays GPR without scoring approval while Oil includes the approved monthly factor", async () => {
   const originalFetch = globalThis.fetch;
   const previousFlag = process.env.GPR_CI_PUBLIC_USE_CONFIRMED;
   process.env.GPR_CI_PUBLIC_USE_CONFIRMED = "true";
@@ -396,7 +853,7 @@ test("Gold and Oil hydrate the licensed GPR workbook as sourced monthly data wit
       assert.equal(gpr.dataHealth.status, "fresh");
       assert.equal(gpr.dataHealth.frequency, "monthly");
       assert.equal(gpr.dataHealth.provenance.aggregation, "monthly-index");
-      assert.equal(gpr.scoreExclusion, "unapproved");
+      assert.equal(gpr.scoreExclusion, configuration.commodity === "oil" ? null : "unapproved");
     }
     assert.equal(fetchCount, 1);
   } finally {
@@ -1298,6 +1755,156 @@ test("supplied Gold correlations propagate without leaking to other commodities"
   assert.equal(classifyPriceRelationship(commodityConfigurations.gold.priceRelationships.dxy).stars, 4);
   const publicDashboard = await getMacroIndicators({ ...commodityConfigurations.gold, contextProvider: undefined, scoreSources: undefined }, "en");
   assert.ok(publicDashboard.cards.every((card) => card.priceCorrelation === undefined));
+});
+
+function oilWorkbookRows() {
+  const dates = Array.from({ length: 13 }, () => []);
+  dates[0][3] = "November 2026";
+  dates[12][1] = "Historical";
+  for (let index = 0; index < 48; index++) {
+    const year = 2024 + Math.floor(index / 12);
+    const month = index % 12 + 1;
+    dates[10][index + 2] = year * 100 + month;
+    dates[12][index + 2] = year < 2026 || year === 2026 && month <= 10 ? 1 : 0;
+  }
+  const table = Array.from({ length: 41 }, () => []);
+  table[0][1] = "Table 3a.  World Petroleum and Other Liquid Fuels Production, Consumption, and Inventories";
+  table[1][1] = "U.S. Energy Information Administration  |  Short-Term Energy Outlook  - November 2026";
+  for (const definition of Object.values(eiaOilDefinitions)) {
+    table[definition.headingRow][1] = definition.heading;
+    table[definition.row] = [definition.code, definition.label, ...Array.from({ length: 48 }, (_, index) =>
+      definition.measurement === "stock" ? 2800 + index : 100 + index / 10)];
+  }
+  const figure = Array.from({ length: 46 }, () => []);
+  figure[1][0] = "U.S. Energy Information Administration, Short-Term Energy Outlook, November 2026";
+  figure[5][16] = "OPEC surplus crude oil production capacity";
+  figure[5][17] = "COPS_OPEC";
+  figure[25][2] = " (million barrels/day)";
+  figure[26][2] = "surplus capacity";
+  figure[27][1] = "Year";
+  figure[45][2] = "Forecast";
+  for (let index = 0; index < 14; index++) figure[28 + index] = [null, 2015 + index, 2 + index / 10];
+  return { dates, table, figure };
+}
+
+test("Oil parsers distinguish historical global rates, OECD end stocks and annual OPEC averages from forecasts", () => {
+  const { dates, table, figure } = oilWorkbookRows();
+  const checkedAt = Date.parse("2026-11-18T16:00:00Z") / 1000;
+  const feeds = parseSteoOil(dates, table, checkedAt);
+  assert.equal(feeds["eia-oil-demand"].at(-1).reportingPeriod.label, "2026-10");
+  assert.equal(feeds["eia-oil-demand"].at(-1).value, 103.3);
+  assert.equal(feeds["eia-oil-demand"].at(-1).provenance.aggregation, "monthly-average");
+  assert.equal(feeds["eia-oil-inventories"].at(-1).provenance.geography, "OECD");
+  assert.equal(feeds["eia-oil-inventories"].at(-1).provenance.aggregation, "month-end");
+  const annual = parseEiaSpareCapacity(dates, figure, checkedAt);
+  assert.deepEqual(annual.map((point) => point.reportingPeriod.label), ["2024", "2025"]);
+  assert.equal(annual.at(-1).provenance.aggregation, "annual-average");
+  assert.equal(annual.at(-1).provenance.geography, "OPEC");
+  const wrongUnits = structuredClone(table);
+  wrongUnits[39][1] = "Inventories (days of supply)";
+  assert.throws(() => parseSteoOil(dates, wrongUnits, checkedAt), /identity or units/);
+  const wrongScope = structuredClone(table);
+  wrongScope[18][0] = "patc_us";
+  assert.throws(() => parseSteoOil(dates, wrongScope, checkedAt), /identity or units/);
+  const invalidFlags = structuredClone(dates);
+  invalidFlags[12][3] = "historical";
+  assert.throws(() => parseSteoOil(invalidFlags, table, checkedAt), /flag/);
+  const conflictingEdition = structuredClone(figure);
+  conflictingEdition[1][0] = "U.S. Energy Information Administration, Short-Term Energy Outlook, October 2026";
+  assert.throws(() => parseEiaSpareCapacity(dates, conflictingEdition, checkedAt), /edition/);
+  const partialYear = structuredClone(dates);
+  partialYear[12] = partialYear[12].map((flag, index) => index >= 25 ? 0 : flag);
+  assert.deepEqual(parseEiaSpareCapacity(partialYear, figure, checkedAt).map((point) => point.reportingPeriod.label), ["2024"]);
+});
+
+test("Oil excludes stale, wrong-scope, wrong-aggregation and missing comparison data without sample fallback", () => {
+  const { dates, table, figure } = oilWorkbookRows();
+  const checkedAt = Date.parse("2026-11-18T16:00:00Z") / 1000;
+  const feeds = { ...parseSteoOil(dates, table, checkedAt), "eia-oil-spare-capacity": parseEiaSpareCapacity(dates, figure, checkedAt) };
+  const config = commodityConfigurations.oil;
+  const score = (input, asOf = checkedAt) => scoreCommodity(hydrateCommodityObservations(config, input, asOf));
+  assert.equal(score(feeds).coverage, 70);
+  assert.equal(typeof score(feeds).score, "number");
+  assert.equal(score(feeds).indicators.find((point) => point.id === "refinery-runs").score, null);
+  const invalid = structuredClone(feeds);
+  invalid["eia-oil-demand"].forEach((point) => { point.provenance.geography = "United States"; });
+  invalid["eia-oil-inventories"].forEach((point) => { point.provenance.aggregation = "monthly-average"; });
+  assert.equal(score(invalid).coverage, 35);
+  const missingYear = { ...feeds, "eia-oil-spare-capacity": feeds["eia-oil-spare-capacity"].slice(-1) };
+  assert.equal(score(missingYear).coverage, 55);
+  assert.equal(score(feeds, Date.parse("2027-05-01T00:00:00Z") / 1000).coverage, 0);
+  assert.equal(score({}).score, null);
+});
+
+test("WTI managed-money feed has an independent permission and rejects other contracts while preserving net shorts", () => {
+  const row = { cftc_contract_market_code: "067651", report_date_as_yyyy_mm_dd: "2026-11-10T00:00:00", m_money_positions_long_all: "120000", m_money_positions_short_all: "140000" };
+  const points = parseCftcManagedMoney([row], cftcCotDefinitions.oil);
+  assert.equal(points[0].value, -20);
+  assert.deepEqual(parseCftcManagedMoney([{ ...row, cftc_contract_market_code: "088691" }], cftcCotDefinitions.oil), []);
+  assert.equal(getSourceRights("cftc", cftcCotDefinitions.oil.seriesId).allowed, false);
+  const previous = process.env.CFTC_COT_WTI_PUBLIC_USE_CONFIRMED;
+  try {
+    process.env.CFTC_COT_WTI_PUBLIC_USE_CONFIRMED = "true";
+    assert.equal(getSourceRights("cftc", cftcCotDefinitions.oil.seriesId).allowed, true);
+  } finally {
+    if (previous === undefined) delete process.env.CFTC_COT_WTI_PUBLIC_USE_CONFIRMED;
+    else process.env.CFTC_COT_WTI_PUBLIC_USE_CONFIRMED = previous;
+  }
+});
+
+test("Oil assembles all seven verified sources in both locales with 90 percent coverage and hourly EIA reuse", async () => {
+  const originalNow = Date.now;
+  const originalFetch = globalThis.fetch;
+  const flags = ["CFTC_COT_WTI_PUBLIC_USE_CONFIRMED", "GPR_CI_PUBLIC_USE_CONFIRMED"];
+  const previous = Object.fromEntries(flags.map((flag) => [flag, process.env[flag]]));
+  Date.now = () => Date.parse("2026-11-18T16:00:00Z");
+  flags.forEach((flag) => { process.env[flag] = "true"; });
+  const { dates, table, figure } = oilWorkbookRows();
+  const bytes = (sheets) => {
+    const book = XLSX.utils.book_new();
+    for (const [name, rows] of Object.entries(sheets)) XLSX.utils.book_append_sheet(book, XLSX.utils.aoa_to_sheet(rows), name);
+    return XLSX.write(book, { type: "array", bookType: "xlsx" });
+  };
+  const monthlyBytes = bytes({ Dates: dates, "3atab": table });
+  const spareBytes = bytes({ "6": figure });
+  const gprBytes = bytes({ Sheet1: gprWorksheetRows() });
+  let eiaRequests = 0;
+  globalThis.fetch = async (raw) => {
+    const url = new URL(String(raw));
+    if (String(raw) === steoOilUrl || String(raw) === spareCapacityUrl) {
+      eiaRequests++;
+      return new Response(String(raw) === steoOilUrl ? monthlyBytes : spareBytes);
+    }
+    if (String(raw) === gprDownloadUrl) return new Response(gprBytes);
+    if (url.hostname === "api.stlouisfed.org") return fredResponse("DTWEXBGS", [["2025-11-14", 100], ["2026-11-16", 95]]);
+    assert.equal(url.hostname, "publicreporting.cftc.gov");
+    assert.equal(url.searchParams.get("$where"), "cftc_contract_market_code='067651'");
+    return Response.json(["2025-11-04", "2026-11-10"].map((date, index) => ({
+      cftc_contract_market_code: "067651", report_date_as_yyyy_mm_dd: date,
+      m_money_positions_long_all: String(100000 + index * 10000), m_money_positions_short_all: "90000",
+    })));
+  };
+  try {
+    for (const locale of ["en", "tr"]) {
+      const dashboard = await getMacroIndicators({ ...commodityConfigurations.oil, contextProvider: undefined }, locale);
+      assert.equal(dashboard.summary.coverage, 90);
+      assert.equal(typeof dashboard.summary.score, "number");
+      assert.equal(dashboard.summary.dataMix.excludedWeight, 10);
+      assert.equal(dashboard.cards.filter((card) => card.dataHealth.status === "fresh").length, 7);
+      assert.equal(dashboard.cards.find((card) => card.id === "refinery-runs").value, "—");
+      assert.equal(dashboard.cards.find((card) => card.id === "refinery-runs").factorScore, null);
+      assert.equal(dashboard.cards.find((card) => card.id === "spare-capacity").dataHealth.frequency, "annual");
+      assert.match(dashboard.cards.find((card) => card.id === "dxy").name, /DTWEXBGS/);
+    }
+    assert.equal(eiaRequests, 2);
+  } finally {
+    Date.now = originalNow;
+    globalThis.fetch = originalFetch;
+    for (const flag of flags) {
+      if (previous[flag] === undefined) delete process.env[flag];
+      else process.env[flag] = previous[flag];
+    }
+  }
 });
 
 test("an additional commodity uses only configuration, without a context fetch", async () => {
