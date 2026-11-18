@@ -79,6 +79,16 @@ A `CommodityConfiguration` contains:
 
 To add Platinum, Palladium, Uranium, Natural Gas, or Steel, register a new configuration under its slug with suitable data and metadata. No new route, score function, or dashboard component is needed. New external data feeds may still require adapters; registration does not invent missing prices or historical observations. The existing seed files are mapped into the normalized configuration, including `weights` and `scoreRules`.
 
+### Personal Metal Models
+
+Apply the [Metal Models migration](web/supabase/migrations/20261117000000_metal_models.sql) after the base Supabase migrations. Sign in, then choose **Customize your model** on Gold, Silver, Copper, or Oil. The editor starts with the site's weights or automatically loads your saved default for that commodity. Moving one slider rebalances the others in whole percentage points, keeping the total at 100%. Change the name and save to rename a model, or use **Save as new** to keep a separate copy. Deleting a default returns the editor to the site's weights unless a different default is set.
+
+The Configured Model panel on each commodity dashboard shows the system score alongside the signed-in user's saved default score, with **Customize your model** next to it. If no default is set, the panel explains how to set one. The editor preview updates immediately using factor scores available when it opened. Both personal scores rescale only eligible weights and show coverage; no eligible positive weight means no score. The personal score does not use public publication thresholds, change public scores, or include stale, unapproved, or sample data.
+
+Commodity dashboards start the chart, score, cross-market, article, and personal model requests together and stream those sections as they are ready. The system score does not wait for the other sections. The scoring and cross-market sections share a single FRED real-yield request per dashboard load; this does not add a shared cache or change data freshness.
+
+Models and defaults are owner-scoped by Supabase RLS. A model has a stable UUID, a definition version for the indicator set, and a revision that advances on save. A future observation/evaluation table can store model ID, revision, exact weights, its scoring-rule version, and observation references independently of the editable model. No evaluation history, backtesting, or performance metrics are collected or exposed.
+
 ### WGC gold data
 
 The Gold dashboard uses monthly net changes in reported official reserves from the WGC `Changes in World Official Gold Reserves` workbook and month-end global ETF holdings from the WGC `Gold ETF Flows` workbook. The reserve-change aggregate is not WGC's broader estimate of total central-bank demand, which includes unreported activity.

@@ -15,6 +15,39 @@
   --mist: #e8ebe4;
 }
 
+.metal-model-page { padding-block: 2rem 4rem; }
+.metal-model-editor { display: grid; gap: 1.5rem; max-width: 64rem; }
+.metal-model-editor fieldset { border: 0; padding: 0; margin: 0; min-inline-size: 0; }
+.metal-model-preview {
+  border: 1px solid var(--line);
+  border-radius: .75rem;
+  background: var(--paper-light);
+  padding: 1rem 1.25rem;
+}
+.metal-model-preview strong { font-size: 2rem; }
+.metal-model-preview p { margin-block: .25rem; }
+.metal-model-fields, .metal-model-weights {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 16rem), 1fr));
+}
+.metal-model-fields label, .metal-model-weights label { display: grid; gap: .35rem; min-width: 0; }
+.metal-model-fields input, .metal-model-fields select, .metal-model-actions button:not(.button-primary) {
+  border: 1px solid var(--line);
+  border-radius: .35rem;
+  background: var(--paper-light);
+  color: var(--ink);
+  padding: .5rem .75rem;
+  width: 100%;
+}
+.metal-model-weights label { border: 1px solid var(--line); padding: .75rem; border-radius: .35rem; }
+.metal-model-weights label > span { display: flex; justify-content: space-between; gap: .5rem; }
+.metal-model-weights input { width: 100%; accent-color: var(--green); }
+.metal-model-actions { display: flex; flex-wrap: wrap; gap: .5rem; margin-block: 1rem; }
+.metal-model-actions button:not(.button-primary) { width: auto; }
+.metal-model-actions button:disabled { opacity: .6; cursor: not-allowed; }
+.metal-model-notice[role="alert"] { color: var(--copper); }
+
 * {
   box-sizing: border-box;
 }
@@ -613,6 +646,25 @@ textarea:focus-visible {
   background: var(--forest);
   color: var(--paper-light);
 }
+
+.macro-score-configured-note { margin: 0 0 10px; color: #b7c1b9; }
+.macro-model-comparison {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 25rem), 1fr));
+  gap: 12px;
+}
+.macro-model-comparison > * {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid #53675b;
+}
+.macro-model-comparison .gold-macro-score-heading, .macro-model-comparison .gold-macro-score-total { flex-wrap: wrap; }
+.macro-model-personal { background: var(--forest-light); }
+.macro-model-personal h3 { margin: 0 0 5px; font-size: 15px; }
+.macro-model-personal p { margin: 5px 0; color: #d3dbd4; font-size: 12px; }
+.macro-model-personal-name { overflow-wrap: anywhere; }
+.macro-model-personal .gold-macro-score-total { margin-block: 8px; }
+.macro-model-personal a { display: inline-block; margin-top: 6px; color: var(--yellow); font-weight: 700; text-decoration: underline; }
 
 .gold-macro-score-heading {
   display: flex;

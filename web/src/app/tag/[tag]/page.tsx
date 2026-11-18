@@ -1,15 +1,53 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { notFound } from "next/navigation";
 import { ArticleCard } from "@/components/article-card";
 import { getArticles } from "@/lib/articles";
 import { getLocale } from "@/lib/locale";
-import { getTagLabel, messages } from "@/lib/i18n";
-import { getCommodityHeaderData, getMacroIndicators } from "@/lib/indicators";
+import { getTagLabel, messages, type Locale } from "@/lib/i18n";
+import { getCommodityHeaderData, loadCommodityIndicators } from "@/lib/indicators";
 import { getCommodityConfiguration } from "@/lib/commodity-config";
-import { MacroIndicators } from "@/components/macro-indicators";
+import { IndicatorGroup, MacroIndicators, MacroScorePanel } from "@/components/macro-indicators";
 import { CommodityHeader } from "@/components/commodity-header";
+import { isMetalModelCommodity } from "@/lib/metal-model";
+import { getDashboardModel, type DashboardModel } from "@/lib/metal-model-default";
 
 type RouteProps = { params: Promise<{ tag: string }> };
+type IndicatorLoad = ReturnType<typeof loadCommodityIndicators>;
+type Articles = Awaited<ReturnType<typeof getArticles>>;
+
+async function CommodityMarketHeader({ data, name, title, locale }: {
+  data: ReturnType<typeof getCommodityHeaderData>; name: string; title: string; locale: Locale;
+}) {
+  return <CommodityHeader name={name} title={title} data={await data} labels={messages[locale].commodityHeader} locale={locale} />;
+}
+
+async function CommodityScore({ model, defaultModel, locale }: {
+  model: IndicatorLoad["model"]; defaultModel: Promise<DashboardModel> | null; locale: Locale;
+}) {
+  const result = await model;
+  return <MacroScorePanel config={result.config} cards={result.cards} locale={locale} macroScore={result.summary} dashboardModel={defaultModel} />;
+}
+
+async function CommodityContext({ context, locale }: { context: IndicatorLoad["context"]; locale: Locale }) {
+  const { cards, source } = await context;
+  return <><IndicatorGroup title={messages[locale].macro.goldCrossMarketContext} cards={cards} locale={locale} />
+    <p className="indicator-source">{source}</p></>;
+}
+
+async function CommodityIndicators({ model, context, locale }: IndicatorLoad & { locale: Locale }) {
+  const result = await model;
+  return <MacroIndicators config={result.config} cards={result.cards} locale={locale} macroScore={result.summary}
+    context={<Suspense fallback={<p role="status">{messages[locale].macro.loadingContext}</p>}>
+      <CommodityContext context={context} locale={locale} />
+    </Suspense>} />;
+}
+
+async function TopicArticles({ data, locale }: { data: Articles | Promise<Articles>; locale: Locale }) {
+  const articles = await data;
+  return articles.length > 0 && <div className="article-grid">{articles.map((article, index) =>
+    <ArticleCard key={article.id} article={article} index={index + 1} locale={locale} />)}</div>;
+}
 
 export async function generateMetadata({ params }: RouteProps): Promise<Metadata> {
   const { tag } = await params;
@@ -25,27 +63,43 @@ export default async function TagPage({ params }: RouteProps) {
   const locale = await getLocale();
   const t = messages[locale].topic;
   const title = decodeURIComponent(tag).replaceAll("-", " ");
-  const articles = (await getArticles(locale)).filter((article) => article.tags.some((item) => item.toLowerCase() === title.toLowerCase()));
+  const articles = getArticles(locale).then((items) =>
+    items.filter((article) => article.tags.some((item) => item.toLowerCase() === title.toLowerCase())));
   const config = getCommodityConfiguration(decodeURIComponent(tag).toLowerCase());
-  if (!articles.length && !config) notFound();
-  const label = config?.name[locale] ?? getTagLabel(`${title[0].toUpperCase()}${title.slice(1)}`, locale);
-  const [indicators, commodityData] = config
-    ? await Promise.all([getMacroIndicators(config, locale), getCommodityHeaderData(config)])
-    : [null, null];
+  if (!config) {
+    const items = await articles;
+    if (!items.length) notFound();
+    const label = getTagLabel(`${title[0].toUpperCase()}${title.slice(1)}`, locale);
+    return <section className="listing-page content-width">
+      <div className="section-kicker"><span className="eyebrow">{t.file}</span><span className="kicker-line" /></div>
+      <h1>{label}</h1><p className="listing-intro">{t.description.replace("{topic}", label.toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-US"))}</p>
+      <TopicArticles data={items} locale={locale} />
+    </section>;
+  }
+
+  const { model, context } = loadCommodityIndicators(config, locale);
+  const header = getCommodityHeaderData(config);
+  const defaultModel = isMetalModelCommodity(config.commodity)
+    ? getDashboardModel(config.commodity, config.indicators.map(({ id }) => id))
+    : null;
+  const macro = messages[locale].macro;
 
   return (
-    <section className={`listing-page content-width${config ? " commodity-page" : ""}`}>
-      {config && indicators?.summary?.score === null && <p className="datafeed-approval-notice" role="status">{messages[locale].macro.dataFeedApprovalNotice}</p>}
-      {!config && <div className="section-kicker"><span className="eyebrow">{t.file}</span><span className="kicker-line" /></div>}
-      {config && commodityData
-        ? <CommodityHeader name={label} title={config.dashboardTitle[locale]} data={commodityData} labels={messages[locale].commodityHeader} locale={locale} />
-        : <><h1>{label}</h1><p className="listing-intro">{t.description.replace("{topic}", label.toLocaleLowerCase(locale === "tr" ? "tr-TR" : "en-US"))}</p></>}
-      {indicators && config && <MacroIndicators cards={indicators.cards} source={indicators.source} config={indicators.config} locale={locale} macroScore={indicators.summary} />}
-      {articles.length > 0 && <div className="article-grid">{articles.map((article, index) => <ArticleCard key={article.id} article={article} index={index + 1} locale={locale} />)}</div>}
-      {config && <footer className="commodity-page-footer">
-        <p className="commodity-legal-disclaimer">{messages[locale].macro.disclaimer}</p>
-        <p className="dashboard-version">{messages[locale].macro.dashboardVersion}</p>
-      </footer>}
+    <section className="listing-page content-width commodity-page">
+      <Suspense fallback={<><h1 id="macro-indicators-title">{config.dashboardTitle[locale]}</h1><p role="status">{macro.loadingMarket}</p></>}>
+        <CommodityMarketHeader data={header} name={config.name[locale]} title={config.dashboardTitle[locale]} locale={locale} />
+      </Suspense>
+      <section className="macro-indicators macro-gold" aria-labelledby="macro-indicators-title">
+        <Suspense fallback={<p role="status">{macro.loadingScore}</p>}>
+          <CommodityScore model={model} defaultModel={defaultModel} locale={locale} />
+        </Suspense>
+        <Suspense fallback={null}><CommodityIndicators model={model} context={context} locale={locale} /></Suspense>
+      </section>
+      <Suspense fallback={null}><TopicArticles data={articles} locale={locale} /></Suspense>
+      <footer className="commodity-page-footer">
+        <p className="commodity-legal-disclaimer">{macro.disclaimer}</p>
+        <p className="dashboard-version">{macro.dashboardVersion}</p>
+      </footer>
     </section>
   );
 }

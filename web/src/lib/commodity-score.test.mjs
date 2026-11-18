@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { registerHooks } from "node:module";
 import { classifyPriceRelationship } from "./price-relationship.ts";
+import { validModelWeights, rebalanceModelWeights, previewMetalModel } from "./metal-model.ts";
 
 process.env.SOURCE_ARCHIVE_ENABLED = "false";
 process.env.YAHOO_FINANCE_AUTOMATED_ACCESS_CONFIRMED = "true";
@@ -36,7 +37,7 @@ const aliases = registerHooks({
 const { calculateCommodityChanges, commodityChangesInput, rankCommodityChanges } = await import("./commodity-changes.ts");
 const { scoreCommodity } = await import("./commodity-score.ts");
 const { commodityConfigurations, getCommodityConfiguration } = await import("./commodity-config.ts");
-const { getMacroIndicators, getCommodityHeaderData } = await import("./indicators.ts");
+const { getMacroIndicators, getCommodityHeaderData, loadCommodityIndicators } = await import("./indicators.ts");
 const { countActiveIndicators, generateMacroSummary } = await import("./macro-summary.ts");
 const { hydrateCommodityObservations } = await import("./commodity-data.ts");
 const { availableObservation, parseFredObservations, fredSeriesDefinitions, monthlyPeriodIsRecent, annualPeriodIsRecent, periodComparison } = await import("./observation-data.ts");
@@ -53,9 +54,90 @@ const XLSX = await import("@e965/xlsx");
 const { currentGoldSeasonality, goldSeasonalityProfile } = await import("./gold-macro-data.ts");
 const { derivedDataHealth, currentStressIndex, stressIndexAt } = await import("./derived-data.ts");
 const { normalizeDashboardPreference, readDashboardPreference, writeDashboardPreference } = await import("./dashboard-preferences.ts");
+const modelClientKey = Symbol.for("macrometals.test.dashboard-model-client");
+const modelClientAlias = registerHooks({
+  resolve(specifier, context, nextResolve) {
+    return specifier === "@/lib/supabase/server" && context.parentURL?.endsWith("/metal-model-default.ts")
+      ? nextResolve("data:text/javascript,export const createSupabaseServerClient = () => globalThis[Symbol.for('macrometals.test.dashboard-model-client')]();", context)
+      : nextResolve(specifier, context);
+  },
+});
+const { getDashboardModel } = await import("./metal-model-default.ts");
+modelClientAlias.deregister();
 aliases.deregister();
 
 const researchPolicy = { mode: "research", minimumCoverage: 0, requiredIndicators: [], approvedIndicators: [] };
+
+test("Metal Model edits preserve the exact 100% total and requested weight across all four dashboards", () => {
+  for (const config of Object.values(commodityConfigurations)) {
+    let weights = config.weights;
+    const ids = config.indicators.map(({ id }) => id);
+    for (const id of ids) {
+      for (const target of [0, 100, 99, 50, 37, 1]) {
+        weights = rebalanceModelWeights(weights, id, target);
+        assert.equal(weights[id], target);
+        assert.ok(validModelWeights(weights, ids));
+      }
+    }
+  }
+  assert.deepEqual(rebalanceModelWeights({ a: 100, b: 0, c: 0, d: 0 }, "a", 95), { a: 95, b: 2, c: 2, d: 1 });
+});
+
+test("Metal Models reject malformed, fractional, and incomplete weight payloads even when they total 100%", () => {
+  const ids = ["a", "b"];
+  for (const invalid of [{ a: 90, b: 9 }, { a: 90.5, b: 9.5 }, { a: -1, b: 101 }, { a: 100 }, { a: 50, c: 50 }, { a: "50", b: 50 }, [50, 50], { a: 50, b: 50, c: 0 }]) {
+    assert.equal(validModelWeights(invalid, ids), false);
+  }
+});
+
+test("Metal Model preview rescales eligible weights and never scores excluded factors or zero eligible weight", () => {
+  const factors = [{ id: "a", score: 100 }, { id: "b", score: 0 }, { id: "c", score: null }];
+  assert.deepEqual(previewMetalModel({ a: 20, b: 20, c: 60 }, factors), { score: 50, coverage: 40 });
+  assert.deepEqual(previewMetalModel({ a: 30, b: 10, c: 60 }, factors), { score: 75, coverage: 40 });
+  assert.deepEqual(previewMetalModel({ a: 0, b: 0, c: 100 }, factors), { score: null, coverage: 0 });
+});
+
+test("Dashboard Metal Model only loads the signed-in user's commodity default and uses its saved weights", async () => {
+  let user = null;
+  let authError = { name: "AuthSessionMissingError" };
+  const weights = { a: 10, b: 90 };
+  let queries = 0;
+  const database = {
+    auth: { getUser: async () => ({ data: { user }, error: authError }) },
+    from(table) {
+      queries += 1;
+      assert.equal(table, "metal_model_defaults");
+      return {
+        select() {
+          return {
+            match(filters) {
+              assert.deepEqual(filters, { user_id: user.id, commodity: "gold" });
+              return { maybeSingle: async () => ({
+                data: user.id === "owner" ? { metal_models: { name: "My default", weights, definition_version: 1 } } : null,
+                error: null,
+              }) };
+            },
+          };
+        },
+      };
+    },
+  };
+  globalThis[modelClientKey] = () => database;
+  try {
+    assert.deepEqual(await getDashboardModel("gold", ["a", "b"]), { status: "signed-out" });
+    assert.equal(queries, 0);
+    authError = null;
+    user = { id: "owner" };
+    const model = await getDashboardModel("gold", ["a", "b"]);
+    assert.deepEqual(model, { status: "ready", name: "My default", weights });
+    assert.deepEqual(previewMetalModel(model.weights, [{ id: "a", score: 100 }, { id: "b", score: 50 }]), { score: 55, coverage: 100 });
+    user = { id: "another-user" };
+    assert.deepEqual(await getDashboardModel("gold", ["a", "b"]), { status: "no-default" });
+    assert.equal(queries, 2);
+  } finally {
+    delete globalThis[modelClientKey];
+  }
+});
 
 function fredResponse(seriesId, observations) {
   return Response.json({ observations: observations.map(([date, value]) => ({ date, value: String(value) })) });
@@ -1402,6 +1484,48 @@ test("FRED and DXY observations reach the score and change engine; FRED blanks a
     assert.equal(offline.summary.coverage, 35);
     assert.equal(offline.summary.dataMix.sourcedWeight, 5);
   } finally { globalThis.fetch = originalFetch; }
+});
+
+test("commodity score resolves while cross-market requests are pending, sharing one real-yield request", async () => {
+  const originalFetch = globalThis.fetch;
+  const day = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const { promise: markets, resolve: releaseMarkets } = Promise.withResolvers();
+  let marketRequests = 0;
+  let yieldRequests = 0;
+  globalThis.fetch = async (raw) => {
+    const url = new URL(String(raw));
+    if (url.hostname === "api.stlouisfed.org") {
+      assert.equal(url.searchParams.get("series_id"), "DFII10");
+      yieldRequests++;
+      return fredResponse("DFII10", [[day, 1.25]]);
+    }
+    assert.equal(url.hostname, "query1.finance.yahoo.com");
+    marketRequests++;
+    await markets;
+    return Response.json({ chart: { result: [] } });
+  };
+  const load = loadCommodityIndicators({
+    ...commodityConfigurations.copper,
+    scoreSources: { "real-rates": "real-yields" },
+  }, "en");
+  let contextFinished = false;
+  const context = load.context.then((result) => {
+    contextFinished = true;
+    return result;
+  });
+  try {
+    assert.ok(marketRequests > 0, "market requests should start with the score feeds");
+    const model = await load.model;
+    assert.equal(model.cards.find((card) => card.id === "real-rates").value, "1.25%");
+    assert.equal(contextFinished, false);
+    assert.equal(yieldRequests, 1);
+    releaseMarkets();
+    assert.ok((await context).cards.every((card) => card.id !== "live-real-rates"));
+  } finally {
+    releaseMarkets();
+    await Promise.allSettled([load.model, context]);
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("duplicate sourced context cards are removed and their 90-day comparisons retained", async () => {

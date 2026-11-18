@@ -8,53 +8,89 @@ import { WhatsChangedCard } from "@/components/whats-changed-card";
 import { MacroSummaryCard } from "@/components/macro-summary-card";
 import { DriverInsightsTabs } from "@/components/driver-insights-tabs";
 import { Info } from "lucide-react";
+import Link from "next/link";
+import { previewMetalModel } from "@/lib/metal-model";
+import type { DashboardModel } from "@/lib/metal-model-default";
+import { metalModelCopy } from "@/lib/metal-model-copy";
+import { Suspense, type ReactNode } from "react";
 
-export function MacroIndicators({
-  cards,
-  source,
-  config,
-  locale,
-  macroScore,
-}: {
+type MacroProps = {
   cards: IndicatorCardData[];
-  source: string;
   config: CommodityConfiguration;
   locale: Locale;
-  macroScore?: MacroScoreSummary;
-}) {
-  const t = messages[locale].macro;
-  const scoreTitle = config.scoreTitle[locale];
-  const methodology = config.methodology[locale];
-  const cardGroup = (card: IndicatorCardData): "tier1" | "tier2" | "context" => {
-    const metric = config.indicators.find((indicator) => indicator.id === card.id);
-    return metric ? metric.tier === 1 ? "tier1" : "tier2" : card.group ?? "context";
-  };
+  macroScore: MacroScoreSummary;
+};
 
-  return (
-    <section className={`macro-indicators${macroScore ? " macro-gold" : ""}`} aria-labelledby="macro-indicators-title">
-      {macroScore && (
+async function PersonalModelScore({ model, cards, config, locale }: Omit<MacroProps, "macroScore"> & { model: Promise<DashboardModel> }) {
+  const dashboardModel = await model;
+  const copy = metalModelCopy[locale];
+  if (dashboardModel.status !== "ready") {
+    return <p>{dashboardModel.status === "signed-out" ? copy.dashboardSignIn
+      : dashboardModel.status === "no-default" ? copy.dashboardNoDefault : copy.unavailableStorage}</p>;
+  }
+  const { score, coverage } = previewMetalModel(dashboardModel.weights, config.indicators.map(({ id }) => ({
+    id, score: cards.find((card) => card.id === id)?.factorScore ?? null,
+  })));
+  return <>
+    <p className="macro-model-personal-name">{dashboardModel.name} · {copy.default}</p>
+    <div className="gold-macro-score-total"><strong>{score ?? "—"}</strong>{score !== null && <span>/100</span>}</div>
+    <p>{copy.coverage.replace("{coverage}", String(coverage)).replace("{excluded}", String(100 - coverage))}</p>
+    <p>{score === null ? copy.noScore : copy.basis}</p>
+  </>;
+}
+
+export function MacroScorePanel({ cards, config, locale, macroScore, dashboardModel }: MacroProps & { dashboardModel: Promise<DashboardModel> | null }) {
+  const t = messages[locale].macro;
+  const modelCopy = metalModelCopy[locale];
+  const scoreTitle = config.scoreTitle[locale];
+  return <>
+        {macroScore.score === null && <p className="datafeed-approval-notice" role="status">{t.dataFeedApprovalNotice}</p>}
         <section className={`gold-macro-score impact-${macroScore.status}`} aria-labelledby="macro-score-title">
-          <div className="gold-macro-score-heading">
-            <div><p className="eyebrow">{macroScore.note}</p><h3 id="macro-score-title">{scoreTitle}</h3></div>
-            <div className="gold-macro-score-total"><strong className={macroScore.score === null ? "macro-score-withheld" : undefined}>{macroScore.score === null ? t.scoreWithheld : macroScore.score}</strong>{macroScore.score !== null && <><span>/100</span><span className={`impact-label impact-label-${macroScore.status}`}>{macroScore.statusLabel}</span><span className="indicator-classification">{macroScore.classification}</span></>}</div>
+          <p className="eyebrow macro-score-configured-note">{macroScore.note}</p>
+          <div className={dashboardModel ? "macro-model-comparison" : undefined}>
+            <div className="macro-model-system">
+              <div className="gold-macro-score-heading">
+                <div>{dashboardModel && <p className="eyebrow">{modelCopy.systemModel}</p>}<h3 id="macro-score-title">{scoreTitle}</h3></div>
+                <div className="gold-macro-score-total"><strong className={macroScore.score === null ? "macro-score-withheld" : undefined}>{macroScore.score === null ? t.scoreWithheld : macroScore.score}</strong>{macroScore.score !== null && <><span>/100</span><span className={`impact-label impact-label-${macroScore.status}`}>{macroScore.statusLabel}</span><span className="indicator-classification">{macroScore.classification}</span></>}</div>
+              </div>
+              {macroScore.score !== null && <div className="stress-track gold-macro-score-track" role="progressbar" aria-label={scoreTitle} aria-valuemin={0} aria-valuemax={100} aria-valuenow={macroScore.score}><span style={{ width: `${macroScore.score}%` }} /></div>}
+              <p className="gold-macro-weights">{macroScore.weights}</p>
+              <div className="macro-score-coverage">
+                <span>{t.scoreCoverageLabel}: {macroScore.coverage.toFixed(0)}% · {t.approvedSourcedWeightLabel}: {macroScore.dataMix.sourcedWeight.toFixed(0)}% · {t.excludedWeightLabel}: {macroScore.dataMix.excludedWeight.toFixed(0)}%</span>
+                <button type="button" className="macro-coverage-info" aria-label={t.coverageDetails} aria-describedby={`${config.commodity}-coverage-tooltip`}><Info size={14} aria-hidden="true" /></button>
+                <span className="macro-coverage-tooltip" role="tooltip" id={`${config.commodity}-coverage-tooltip`}>{t.coverageExplanation}</span>
+              </div>
+              {macroScore.release.mode === "sourced-only" && <div className="macro-score-policy">
+                <p>{t.scoreApprovalCount.replace("{count}", String(macroScore.release.approvedCount)).replace("{total}", String(config.indicators.length))} · {t.referenceSamplesExcluded.replace("{weight}", macroScore.release.referenceSampleWeight.toFixed(0))}</p>
+                {macroScore.score === null && <>
+                  <p>{t.scoreWithheldReason.replace("{minimum}", String(macroScore.release.minimumCoverage))}</p>
+                  {macroScore.release.missingRequired.length > 0 && <p>{t.missingCriticalFactors}: {macroScore.release.missingRequired.join(" · ")}</p>}
+                </>}
+              </div>}
+            </div>
+            {dashboardModel && <section className="macro-model-personal" aria-labelledby={`${config.commodity}-personal-model-title`}>
+              <h3 id={`${config.commodity}-personal-model-title`}>{modelCopy.personalModel}</h3>
+              <Suspense fallback={<p role="status">{t.loadingPersonalModel}</p>}>
+                <PersonalModelScore model={dashboardModel} cards={cards} config={config} locale={locale} />
+              </Suspense>
+              <Link href={`/models/${config.commodity}`} prefetch={false}>{modelCopy.edit}</Link>
+            </section>}
           </div>
-          {macroScore.score !== null && <div className="stress-track gold-macro-score-track" role="progressbar" aria-label={scoreTitle} aria-valuemin={0} aria-valuemax={100} aria-valuenow={macroScore.score}><span style={{ width: `${macroScore.score}%` }} /></div>}
-          <p className="gold-macro-weights">{macroScore.weights}</p>
-          <div className="macro-score-coverage">
-            <span>{t.scoreCoverageLabel}: {macroScore.coverage.toFixed(0)}% · {t.approvedSourcedWeightLabel}: {macroScore.dataMix.sourcedWeight.toFixed(0)}% · {t.excludedWeightLabel}: {macroScore.dataMix.excludedWeight.toFixed(0)}%</span>
-            <button type="button" className="macro-coverage-info" aria-label={t.coverageDetails} aria-describedby={`${config.commodity}-coverage-tooltip`}><Info size={14} aria-hidden="true" /></button>
-            <span className="macro-coverage-tooltip" role="tooltip" id={`${config.commodity}-coverage-tooltip`}>{t.coverageExplanation}</span>
-          </div>
-          {macroScore.release.mode === "sourced-only" && <div className="macro-score-policy">
-            <p>{t.scoreApprovalCount.replace("{count}", String(macroScore.release.approvedCount)).replace("{total}", String(config.indicators.length))} · {t.referenceSamplesExcluded.replace("{weight}", macroScore.release.referenceSampleWeight.toFixed(0))}</p>
-            {macroScore.score === null && <>
-              <p>{t.scoreWithheldReason.replace("{minimum}", String(macroScore.release.minimumCoverage))}</p>
-              {macroScore.release.missingRequired.length > 0 && <p>{t.missingCriticalFactors}: {macroScore.release.missingRequired.join(" · ")}</p>}
-            </>}
-          </div>}
           <p className="gold-macro-disclosure">{macroScore.disclosure}</p>
         </section>
-      )}
+  </>;
+}
+
+export function IndicatorGroup({ title, cards, locale }: { title: string; cards: IndicatorCardData[]; locale: Locale }) {
+  if (!cards.length) return null;
+  return <section className="gold-indicator-group"><h3>{title}</h3><div className="indicator-grid">{cards.map((card) =>
+    <IndicatorCard key={card.id} card={card} locale={locale} />)}</div></section>;
+}
+
+export function MacroIndicators({ cards, config, locale, macroScore, context }: MacroProps & { context: ReactNode }) {
+  const t = messages[locale].macro;
+  const methodology = config.methodology[locale];
+  return <>
       {macroScore && macroScore.score !== null && <MacroSummaryCard input={{
         commodity: config.commodity,
         commodityName: config.name[locale],
@@ -75,17 +111,9 @@ export function MacroIndicators({
       {macroScore && <DriverInsightsTabs commodity={config.commodity} locale={locale}
         scoreDrivers={<MacroDrivers summary={macroScore} locale={locale} />}
         recentChanges={<WhatsChangedCard {...commodityChangesInput(config)} locale={locale} />} />}
-      {macroScore ? (
-        (["tier1", "tier2", "context"] as const).map((group) => {
-          const groupedCards = cards.filter((card) => cardGroup(card) === group);
-          if (!groupedCards.length) return null;
-          const title = group === "tier1" ? t.goldTierOne : group === "tier2" ? t.goldTierTwo : t.goldCrossMarketContext;
-          return <section className="gold-indicator-group" key={group}><h3>{title}</h3><div className="indicator-grid">{groupedCards.map((card) => <IndicatorCard key={card.id} card={card} locale={locale} />)}</div></section>;
-        })
-      ) : (
-        <div className="indicator-grid">{cards.map((card) => <IndicatorCard key={card.id} card={card} locale={locale} />)}</div>
-      )}
-      <p className="indicator-source">{source}</p>
+      <IndicatorGroup title={t.goldTierOne} cards={cards.filter((card) => card.group === "tier1")} locale={locale} />
+      <IndicatorGroup title={t.goldTierTwo} cards={cards.filter((card) => card.group === "tier2")} locale={locale} />
+      {context}
       <p className="macro-refresh">{config.refresh[locale]}</p>
       <details className="macro-methodology">
         <summary>{t.methodologyTitle}</summary>
@@ -109,6 +137,5 @@ export function MacroIndicators({
           </section>
         </div>
       </details>
-    </section>
-  );
+  </>;
 }

@@ -509,7 +509,42 @@ function makeCard(
   };
 }
 
+export function loadCommodityIndicators(config: CommodityConfiguration, locale: Locale) {
+  const requestedSources = new Set(Object.values(config.scoreSources ?? {}));
+  let realYields: Promise<Series | null> | undefined;
+  const loadRealYields = () => realYields ??= getRealYieldSeries();
+  const present = (card: IndicatorCardData) => {
+    const research = config.scoringPolicy?.mode === "research";
+    const labeled = { ...card, commodityName: config.name[locale],
+      priceCorrelation: research ? config.priceRelationships?.[card.id] : undefined };
+    return research ? labeled : hideUnverifiedSampleCard(labeled, locale);
+  };
+  const model = loadMacroScore(config, locale, requestedSources, loadRealYields).then((result) => ({
+    ...result, cards: result.cards.map(present),
+  }));
+  const context = (async () => {
+    if (!config.contextProvider) return { cards: [], source: config.source[locale] };
+    const result = await getContextIndicators(config.contextProvider, locale, loadRealYields);
+    const contextSources: Record<string, "dxy" | "real-yields"> = { "live-dxy": "dxy", "oil-dxy": "dxy", "live-real-rates": "real-yields" };
+    const macroIds = new Set(config.indicators.map(({ id }) => id));
+    const cards = result.cards.filter((card) => !requestedSources.has(contextSources[card.id]) && !macroIds.has(card.id));
+    return {
+      source: result.source,
+      cards: cards.map((card) => present({ ...card, group: "context", dataHealth: card.dataHealth ?? contextDataHealth(card, config.commodity) })),
+    };
+  })();
+  return { model, context };
+}
+
 export async function getMacroIndicators(config: CommodityConfiguration, locale: Locale) {
+  const { model, context } = loadCommodityIndicators(config, locale);
+  const [macro, market] = await Promise.all([model, context]);
+  return { ...macro, cards: [...macro.cards, ...market.cards], source: market.source };
+}
+
+async function loadMacroScore(config: CommodityConfiguration, locale: Locale,
+  requestedSources: ReadonlySet<NonNullable<CommodityConfiguration["scoreSources"]>[string]>,
+  loadRealYields: typeof getRealYieldSeries) {
   const currentDate = new Date();
   const requestStartedAt = currentDate.getTime() / 1000;
   const monthStart = Date.UTC(currentDate.getUTCFullYear(), currentDate.getUTCMonth(), 1) / 1000;
@@ -522,10 +557,9 @@ export async function getMacroIndicators(config: CommodityConfiguration, locale:
         dataHealth: indicator.dataHealth ? { ...indicator.dataHealth, observedAt: monthStart, checkedAt: requestStartedAt } : indicator.dataHealth,
       } : indicator),
   } : config;
-  const requestedSources = new Set(Object.values(activeConfig.scoreSources ?? {}));
   const [dxy, realYields, m2, breakeven, cot, gpr, silverBreakeven, silverCot, wtiCot, oilFeeds] = await Promise.all([
     requestedSources.has("dxy") ? getFredSeries("DTWEXBGS") : Promise.resolve(null),
-    requestedSources.has("real-yields") ? getRealYieldSeries() : Promise.resolve(null),
+    requestedSources.has("real-yields") ? loadRealYields() : Promise.resolve(null),
     requestedSources.has("m2") ? getFredSeries("M2SL") : Promise.resolve(null),
     requestedSources.has("breakeven-5y") ? getFredSeries("T5YIE") : Promise.resolve(null),
     requestedSources.has("cftc-gold-cot") ? getCftcCotSeries("gold") : Promise.resolve(null),
@@ -560,22 +594,7 @@ export async function getMacroIndicators(config: CommodityConfiguration, locale:
     gpr: gpr?.points ?? null,
   }, checkedAt,
     { "real-yields": realYields ?? {}, m2: m2 ?? {}, "breakeven-5y": breakeven ?? {}, "breakeven-10y": silverBreakeven ?? {} });
-  const macro = macroScoreCards(locale, resolvedConfig);
-  const context = activeConfig.contextProvider
-    ? await getContextIndicators(activeConfig.contextProvider, locale)
-    : { cards: [], source: activeConfig.source[locale] };
-  const contextSources: Record<string, "dxy" | "real-yields"> = { "live-dxy": "dxy", "oil-dxy": "dxy", "live-real-rates": "real-yields" };
-  const macroIds = new Set(macro.cards.map((card) => card.id));
-  const contextCards = context.cards.filter((card) => !requestedSources.has(contextSources[card.id]) && !macroIds.has(card.id));
-  return {
-    cards: [...macro.cards, ...contextCards.map((card) => ({ ...card, group: "context" as const, dataHealth: card.dataHealth ?? contextDataHealth(card, config.commodity) }))]
-      .map((card) => ({ ...card, commodityName: activeConfig.name[locale],
-        priceCorrelation: activeConfig.scoringPolicy?.mode === "research" ? activeConfig.priceRelationships?.[card.id] : undefined }))
-      .map((card) => activeConfig.scoringPolicy?.mode === "research" ? card : hideUnverifiedSampleCard(card, locale)),
-    summary: macro.summary,
-    config: resolvedConfig,
-    source: context.source,
-  };
+  return { ...macroScoreCards(locale, resolvedConfig), config: resolvedConfig };
 }
 
 function contextDataHealth(card: IndicatorCardData, commodity: string): IndicatorDataHealth {
@@ -617,7 +636,7 @@ function protectDerivedCard(card: IndicatorCardData, inputs: readonly DerivedDep
     previousValue: undefined, yoyChange: undefined, score: undefined, severity: undefined, dataHealth: health };
 }
 
-async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil", locale: Locale) {
+async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil", locale: Locale, loadRealYields: typeof getRealYieldSeries) {
   const t = messages[locale].macro;
   if (metal === "oil") return getOilIndicators(locale);
   const historyRange = metal === "gold" ? "10y" : "5y";
@@ -627,7 +646,7 @@ async function getContextIndicators(metal: "gold" | "silver" | "copper" | "oil",
     metal === "copper" ? Promise.resolve(null) : getMarketSeries("SI=F", "1wk", historyRange),
     metal === "copper" ? Promise.resolve(null) : getMarketSeries("CL=F", "1wk", historyRange),
     metal === "copper" ? Promise.resolve(null) : getMarketSeries("^GSPC", "1wk", historyRange),
-    getRealYieldSeries(),
+    loadRealYields(),
     metal === "copper" ? getMarketSeries("HG=F") : Promise.resolve(null),
   ]);
 
