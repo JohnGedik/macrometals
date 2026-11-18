@@ -2,7 +2,7 @@ import type { MacroScoreSummary, IndicatorCardData } from "@/lib/indicators";
 import { messages, type Locale } from "@/lib/i18n";
 import { IndicatorCard } from "@/components/indicator-card";
 import { MacroDrivers } from "@/components/macro-drivers";
-import type { CommodityConfiguration } from "@/lib/commodity-score";
+import { classifyScoreStatus, type CommodityConfiguration } from "@/lib/commodity-score";
 import { commodityChangesInput } from "@/lib/commodity-changes";
 import { WhatsChangedCard } from "@/components/whats-changed-card";
 import { MacroSummaryCard } from "@/components/macro-summary-card";
@@ -24,16 +24,39 @@ type MacroProps = {
 async function PersonalModelScore({ model, cards, config, locale }: Omit<MacroProps, "macroScore"> & { model: Promise<DashboardModel> }) {
   const dashboardModel = await model;
   const copy = metalModelCopy[locale];
+  const t = messages[locale].macro;
   if (dashboardModel.status !== "ready") {
-    return <p>{dashboardModel.status === "signed-out" ? copy.dashboardSignIn
-      : dashboardModel.status === "no-default" ? copy.dashboardNoDefault : copy.unavailableStorage}</p>;
+    return <>
+      <h3 id={`${config.commodity}-personal-model-title`}>{copy.personalModel}</h3>
+      <p>{dashboardModel.status === "signed-out" ? copy.dashboardSignIn
+        : dashboardModel.status === "no-default" ? copy.dashboardNoDefault : copy.unavailableStorage}</p>
+    </>;
   }
   const { score, coverage } = previewMetalModel(dashboardModel.weights, config.indicators.map(({ id }) => ({
     id, score: cards.find((card) => card.id === id)?.factorScore ?? null,
   })));
+  const status = score === null ? "unavailable" : classifyScoreStatus(score, config.scoreRules);
+  const classification = score === null ? t.unavailable : score <= 25 ? t.severity.low
+    : score <= 50 ? t.severity.moderate : score <= 75 ? t.severity.elevated : t.severity.high;
+
   return <>
-    <p className="macro-model-personal-name">{dashboardModel.name} · {copy.default}</p>
-    <div className="gold-macro-score-total"><strong>{score ?? "—"}</strong>{score !== null && <span>/100</span>}</div>
+    <div className="gold-macro-score-heading">
+      <div>
+        <p className="eyebrow macro-model-personal-name">{dashboardModel.name} · {copy.default}</p>
+        <h3 id={`${config.commodity}-personal-model-title`}>{copy.personalModel}</h3>
+      </div>
+      <div className="gold-macro-score-total">
+        <strong>{score ?? "—"}</strong>
+        {score !== null && <>
+          <span>/100</span>
+          <span className={`impact-label impact-label-${status}`}>{t.impact[status]}</span>
+          <span className="indicator-classification">{classification}</span>
+        </>}
+      </div>
+    </div>
+    {score !== null && <div className="stress-track gold-macro-score-track" role="progressbar"
+      aria-label={`${dashboardModel.name} ${copy.personalModel}`} aria-valuemin={0} aria-valuemax={100}
+      aria-valuenow={score}><span style={{ width: `${score}%` }} /></div>}
     <p>{copy.coverage.replace("{coverage}", String(coverage)).replace("{excluded}", String(100 - coverage))}</p>
     <p>{score === null ? copy.noScore : copy.basis}</p>
   </>;
@@ -69,8 +92,10 @@ export function MacroScorePanel({ cards, config, locale, macroScore, dashboardMo
               </div>}
             </div>
             {dashboardModel && <section className="macro-model-personal" aria-labelledby={`${config.commodity}-personal-model-title`}>
-              <h3 id={`${config.commodity}-personal-model-title`}>{modelCopy.personalModel}</h3>
-              <Suspense fallback={<p role="status">{t.loadingPersonalModel}</p>}>
+              <Suspense fallback={<>
+                <h3 id={`${config.commodity}-personal-model-title`}>{modelCopy.personalModel}</h3>
+                <p role="status">{t.loadingPersonalModel}</p>
+              </>}>
                 <PersonalModelScore model={dashboardModel} cards={cards} config={config} locale={locale} />
               </Suspense>
               <Link href={`/models/${config.commodity}`} prefetch={false}>{modelCopy.edit}</Link>
