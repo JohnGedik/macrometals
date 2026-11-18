@@ -10,6 +10,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:locale": "node --experimental-strip-types --test src/lib/locale-preference.test.mjs",
     "test:commodities": "node --experimental-strip-types --test src/lib/commodity-score.test.mjs src/lib/wgc-gold-parser.test.mjs",
     "import:wgc": "node --experimental-strip-types scripts/import-wgc-gold-workbooks.mjs",
     "import:silver": "node --experimental-strip-types scripts/import-silver-industrial.mjs"
