@@ -662,7 +662,16 @@ textarea:focus-visible {
 .macro-model-personal { background: var(--forest-light); }
 .macro-model-personal h3 { margin: 0 0 5px; font-size: 15px; }
 .macro-model-personal p:not(.eyebrow) { margin: 5px 0; color: #d3dbd4; font-size: 12px; }
-.macro-model-personal-name { overflow-wrap: anywhere; }
+.macro-model-personal-name {
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #b7c1b9;
+  font-family: inherit;
+  cursor: pointer;
+}
+.macro-model-personal-name option { color: var(--ink); }
 .macro-model-personal .gold-macro-score-total { margin-block: 0; }
 .macro-model-personal a { display: inline-block; margin-top: 6px; color: var(--yellow); font-weight: 700; text-decoration: underline; }
 

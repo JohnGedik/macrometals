@@ -101,21 +101,40 @@ test("Dashboard Metal Model only loads the signed-in user's commodity default an
   let user = null;
   let authError = { name: "AuthSessionMissingError" };
   const weights = { a: 10, b: 90 };
+  const alternateWeights = { a: 50, b: 50 };
   let queries = 0;
   const database = {
     auth: { getUser: async () => ({ data: { user }, error: authError }) },
     from(table) {
       queries += 1;
-      assert.equal(table, "metal_model_defaults");
       return {
         select() {
-          return {
+          if (table === "metal_model_defaults") return {
             match(filters) {
               assert.deepEqual(filters, { user_id: user.id, commodity: "gold" });
               return { maybeSingle: async () => ({
-                data: user.id === "owner" ? { metal_models: { name: "My default", weights, definition_version: 1 } } : null,
+                data: user.id === "owner" ? { model_id: "default-model" } : null,
                 error: null,
               }) };
+            },
+          };
+          assert.equal(table, "metal_models");
+          return {
+            match(filters) {
+              assert.deepEqual(filters, { user_id: user.id, commodity: "gold" });
+              return {
+                order() {
+                  return {
+                    returns: async () => ({
+                      data: [
+                        { id: "alternate-model", name: "Alternate", weights: alternateWeights, definition_version: 1 },
+                        { id: "default-model", name: "My default", weights, definition_version: 1 },
+                      ],
+                      error: null,
+                    }),
+                  };
+                },
+              };
             },
           };
         },
@@ -129,11 +148,18 @@ test("Dashboard Metal Model only loads the signed-in user's commodity default an
     authError = null;
     user = { id: "owner" };
     const model = await getDashboardModel("gold", ["a", "b"]);
-    assert.deepEqual(model, { status: "ready", name: "My default", weights });
-    assert.deepEqual(previewMetalModel(model.weights, [{ id: "a", score: 100 }, { id: "b", score: 50 }]), { score: 55, coverage: 100 });
+    assert.deepEqual(model, {
+      status: "ready",
+      defaultId: "default-model",
+      models: [
+        { id: "alternate-model", name: "Alternate", weights: alternateWeights },
+        { id: "default-model", name: "My default", weights },
+      ],
+    });
+    assert.deepEqual(previewMetalModel(model.models[1].weights, [{ id: "a", score: 100 }, { id: "b", score: 50 }]), { score: 55, coverage: 100 });
     user = { id: "another-user" };
     assert.deepEqual(await getDashboardModel("gold", ["a", "b"]), { status: "no-default" });
-    assert.equal(queries, 2);
+    assert.equal(queries, 3);
   } finally {
     delete globalThis[modelClientKey];
   }

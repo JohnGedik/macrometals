@@ -5,7 +5,7 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export type DashboardModel =
   | { status: "signed-out" | "no-default" | "unavailable" }
-  | { status: "ready"; name: string; weights: ModelWeights };
+  | { status: "ready"; models: { id: string; name: string; weights: ModelWeights }[]; defaultId: string };
 
 export async function getDashboardModel(commodity: MetalModelCommodity, indicatorIds: readonly string[]): Promise<DashboardModel> {
   const supabase = await createSupabaseServerClient();
@@ -19,19 +19,32 @@ export async function getDashboardModel(commodity: MetalModelCommodity, indicato
   if (!user) return { status: "signed-out" };
 
   const { data, error } = await supabase.from("metal_model_defaults")
-    .select("metal_models!inner(name, weights, definition_version)")
+    .select("model_id")
     .match({ user_id: user.id, commodity })
-    .maybeSingle<{ metal_models: { name: string; weights: unknown; definition_version: number } }>();
+    .maybeSingle<{ model_id: string }>();
   if (error) {
     console.error("Could not load default dashboard metal model", error.code);
     return { status: "unavailable" };
   }
   if (!data) return { status: "no-default" };
 
-  const model = data.metal_models;
-  if (model?.definition_version !== 1 || typeof model.name !== "string" || !validModelWeights(model.weights, indicatorIds)) {
+  const { data: models, error: modelsError } = await supabase.from("metal_models")
+    .select("id, name, weights, definition_version")
+    .match({ user_id: user.id, commodity })
+    .order("name")
+    .returns<{ id: string; name: unknown; weights: unknown; definition_version: number }[]>();
+  if (modelsError) {
+    console.error("Could not load dashboard metal models", modelsError.code);
+    return { status: "unavailable" };
+  }
+  if (!models?.some(({ id }) => id === data.model_id) || models.some((model) =>
+    model.definition_version !== 1 || typeof model.name !== "string" || !validModelWeights(model.weights, indicatorIds))) {
     console.error("Invalid default dashboard metal model definition", commodity);
     return { status: "unavailable" };
   }
-  return { status: "ready", name: model.name, weights: model.weights };
+  return {
+    status: "ready",
+    models: models.map(({ id, name, weights }) => ({ id, name: name as string, weights: weights as ModelWeights })),
+    defaultId: data.model_id,
+  };
 }
