@@ -626,6 +626,21 @@ textarea:focus-visible {
   padding-top: 38px;
   padding-bottom: 42px;
 }
+.macro-drivers-loading {
+  min-height: 190px;
+  padding-top: 24px;
+  padding-bottom: 30px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.macro-drivers-loading .macro-loading-copy strong {
+  font-size: clamp(30px, 4vw, 48px);
+}
+.macro-drivers-loading .macro-loading-orbit {
+  width: 58px;
+  height: 58px;
+  flex-basis: 58px;
+}
 .macro-loading-copy {
   display: flex;
   align-items: center;
@@ -3066,6 +3081,7 @@ textarea:focus-visible {
   .home-macro-scores-note { text-align: left; }
   .home-macro-score-grid { grid-template-columns: 1fr; }
   .home-macro-scores-loading { min-height: 220px; gap: 24px; }
+  .macro-drivers-loading { min-height: 175px; }
   .macro-loading-copy { align-items: flex-start; gap: 16px; }
   .macro-loading-orbit { width: 48px; height: 48px; flex-basis: 48px; }
   .macro-loading-orbit > span { width: 11px; height: 11px; }

@@ -3,6 +3,7 @@ import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { Suspense } from "react";
 import { ArticleCard } from "@/components/article-card";
 import { HomeMacroScores } from "@/components/home-macro-scores";
+import { MacroDataLoading } from "@/components/macro-data-loading";
 import { getArticles } from "@/lib/articles";
 import { getTagLabel, messages } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
@@ -17,24 +18,7 @@ export default async function HomePage() {
   return (
     <>
       <div className="market-note"><span>{t.strapline}</span><span>{t.englishTurkish}</span></div>
-      <Suspense fallback={
-        <section className="home-macro-scores-loading content-width" role="status" aria-live="polite">
-          <div className="macro-loading-copy">
-            <span className="macro-loading-orbit" aria-hidden="true">
-              <span />
-              <span />
-              <span />
-            </span>
-            <strong>{t.loadingScores}</strong>
-          </div>
-          <div className="macro-loading-bars" aria-hidden="true">
-            <span className="macro-loading-bar macro-loading-bar-gold" />
-            <span className="macro-loading-bar macro-loading-bar-silver" />
-            <span className="macro-loading-bar macro-loading-bar-copper" />
-            <span className="macro-loading-bar macro-loading-bar-oil" />
-          </div>
-        </section>
-      }>
+      <Suspense fallback={<MacroDataLoading className="content-width" message={t.loadingScores} />}>
         <HomeMacroScores locale={locale} />
       </Suspense>
 

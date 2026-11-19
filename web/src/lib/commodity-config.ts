@@ -132,9 +132,12 @@ export const commodityConfigurations = {
     scoringPolicy: {
       mode: "sourced-only", minimumCoverage: 0,
       requiredIndicators: [],
-      approvedIndicators: ["dxy", "real-rates"],
+      approvedIndicators: ["industrial-demand", "china-pmi", "mine-supply", "dxy", "real-rates"],
     },
-    scoreSources: { dxy: "dxy", "real-rates": "real-yields" },
+    scoreSources: {
+      "industrial-demand": "copper-industrial-demand", "china-pmi": "china-pmi",
+      "mine-supply": "copper-mine-supply", dxy: "dxy", "real-rates": "real-yields",
+    },
     summaryTone: { en: "Manufacturing, electrification and supply availability frame this outlook.", tr: "Bu görünüm imalat, elektrifikasyon ve arz koşulları çerçevesinde değerlendirilir." },
     market: { symbol: "HG=F", unit: "lb" },
     dashboardTitle: localized((locale) => messages[locale].macro.copperDashboardTitle),

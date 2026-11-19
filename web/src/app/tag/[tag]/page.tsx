@@ -9,6 +9,7 @@ import { getCommodityHeaderData, loadCommodityIndicators } from "@/lib/indicator
 import { getCommodityConfiguration } from "@/lib/commodity-config";
 import { IndicatorGroup, MacroIndicators, MacroScorePanel } from "@/components/macro-indicators";
 import { CommodityHeader } from "@/components/commodity-header";
+import { MacroDataLoading } from "@/components/macro-data-loading";
 import { isMetalModelCommodity } from "@/lib/metal-model";
 import { getDashboardModel, type DashboardModel } from "@/lib/metal-model-default";
 
@@ -93,7 +94,9 @@ export default async function TagPage({ params }: RouteProps) {
         <Suspense fallback={<p role="status">{macro.loadingScore}</p>}>
           <CommodityScore model={model} defaultModel={defaultModel} locale={locale} />
         </Suspense>
-        <Suspense fallback={null}><CommodityIndicators model={model} context={context} locale={locale} /></Suspense>
+        <Suspense fallback={<MacroDataLoading className="macro-drivers-loading" message={macro.loadingMarket} />}>
+          <CommodityIndicators model={model} context={context} locale={locale} />
+        </Suspense>
       </section>
       <Suspense fallback={null}><TopicArticles data={articles} locale={locale} /></Suspense>
       <footer className="commodity-page-footer">

@@ -1,6 +1,6 @@
 export type SourceRightsStatus = "permission-confirmed" | "review-required" | "public-domain-attribution" | "provenance-unverified";
 export type SourceRightsDisclosure = { status: SourceRightsStatus; termsUrl?: string };
-export type SourceProvider = "yahoo" | "fred" | "wgc" | "cftc" | "gpr" | "silver-institute" | "eia" | "public-domain";
+export type SourceProvider = "yahoo" | "fred" | "wgc" | "cftc" | "gpr" | "silver-institute" | "icsg" | "nbs" | "eia" | "public-domain";
 export const unverifiedSampleRights: SourceRightsDisclosure = { status: "provenance-unverified" };
 
 const yahooTermsUrl = "https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html";
@@ -31,6 +31,8 @@ const silverInstituteSeriesFlags: Record<string, string> = {
 export function getSourceRights(provider: SourceProvider, seriesId?: string) {
   if (provider === "public-domain") return { allowed: true, disclosure: { status: "public-domain-attribution", termsUrl: eiaTermsUrl } as const };
   if (provider === "eia") return { allowed: true, disclosure: { status: "public-domain-attribution", termsUrl: eiaTermsUrl } as const };
+  if (provider === "icsg") return { allowed: true, disclosure: { status: "permission-confirmed", termsUrl: "https://icsg.org/index.php/copyright/" } as const };
+  if (provider === "nbs") return { allowed: true, disclosure: { status: "permission-confirmed", termsUrl: "https://www.stats.gov.cn/english/nbs/200701/t20070104_59236.html" } as const };
   const allowed = provider === "yahoo"
     ? process.env.YAHOO_FINANCE_AUTOMATED_ACCESS_CONFIRMED === "true"
       && process.env.MARKET_DATA_PUBLIC_DISTRIBUTION_CONFIRMED === "true"

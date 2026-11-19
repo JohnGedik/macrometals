@@ -7,13 +7,14 @@ import { cftcGoldCotSeriesId, cftcSilverCotSeriesId, cftcWtiCotSeriesId, cftcGol
 import { eiaOilDefinitions, spareCapacitySeriesId, spareCapacityUrl, steoOilUrl } from "@/lib/eia-oil-parser";
 import { gprSeriesId, gprSourceUrl } from "@/lib/gpr";
 import { silverIndustrialSeriesId, silverSolarSeriesId, silverMineSeriesId, silverEtpSeriesId, silverEtpPdfPage, silverIndustrialUnit, silverSurveyUrl } from "@/lib/silver-industrial-parser";
+import { chinaPmiSeriesId, copperIndustrialDemandSeriesId, copperMineSupplySeriesId, icsgCopperTableUrl } from "@/lib/copper-data-parser";
 
 type ScoreSource = NonNullable<CommodityConfiguration["scoreSources"]>[string];
 type SourceDefinition = {
   source: string;
   url: string;
   seriesId: string;
-  provider: "yahoo" | "fred" | "wgc" | "cftc" | "gpr" | "silver-institute" | "eia";
+  provider: "yahoo" | "fred" | "wgc" | "cftc" | "gpr" | "silver-institute" | "icsg" | "nbs" | "eia";
   frequency: "daily" | "weekly" | "monthly" | "annual";
   measurement: "stock" | "flow" | "rate" | "index";
   normalizedUnit: string;
@@ -37,6 +38,9 @@ const sources: Record<ScoreSource, SourceDefinition> = {
   "silver-solar-demand": { source: "The Silver Institute / Metals Focus - World Silver Survey 2026, of which photovoltaics (included in industrial demand)", url: `${silverSurveyUrl}#page=11`, seriesId: silverSolarSeriesId, provider: "silver-institute", frequency: "annual", measurement: "flow", normalizedUnit: silverIndustrialUnit, maxLagMonths: 16 },
   "silver-mine-supply": { source: "The Silver Institute / Metals Focus - World Silver Survey 2026, global mine production", url: `${silverSurveyUrl}#page=11`, seriesId: silverMineSeriesId, provider: "silver-institute", frequency: "annual", measurement: "flow", normalizedUnit: silverIndustrialUnit, maxLagMonths: 16 },
   "silver-etp-holdings": { source: "The Silver Institute / Metals Focus - World Silver Survey 2026, global physically backed ETP year-end holdings (rounded Moz; respective ETP providers / Bloomberg)", url: `${silverSurveyUrl}#page=${silverEtpPdfPage}`, seriesId: silverEtpSeriesId, provider: "silver-institute", frequency: "annual", measurement: "stock", normalizedUnit: silverIndustrialUnit, maxLagMonths: 16 },
+  "copper-industrial-demand": { source: "International Copper Study Group · world refined copper usage", url: icsgCopperTableUrl, seriesId: copperIndustrialDemandSeriesId, provider: "icsg", frequency: "annual", measurement: "flow", normalizedUnit: "million metric tonnes", maxLagMonths: 16, geography: "Global", aggregation: "annual-total" },
+  "copper-mine-supply": { source: "International Copper Study Group · world copper mine production", url: icsgCopperTableUrl, seriesId: copperMineSupplySeriesId, provider: "icsg", frequency: "annual", measurement: "flow", normalizedUnit: "million metric tonnes", maxLagMonths: 16, geography: "Global", aggregation: "annual-total" },
+  "china-pmi": { source: "National Bureau of Statistics of China / CFLP · manufacturing PMI", url: "https://www.stats.gov.cn/english/PressRelease/", seriesId: chinaPmiSeriesId, provider: "nbs", frequency: "monthly", measurement: "index", normalizedUnit: "index points", maxLagMonths: 2, geography: "China", aggregation: "monthly-index" },
   "cftc-wti-cot": { source: "CFTC - NYMEX WTI Physical, Disaggregated Futures Only, Managed Money net", url: cftcGoldCotSourceUrl, seriesId: cftcWtiCotSeriesId, provider: "cftc", frequency: "weekly", measurement: "stock", normalizedUnit: "thousand contracts", maxAgeDays: 14 },
   "eia-oil-demand": { source: "EIA STEO - world petroleum and other liquids consumption (historical estimates)", url: steoOilUrl, seriesId: eiaOilDefinitions["eia-oil-demand"].seriesId, provider: "eia", frequency: "monthly", measurement: "rate", normalizedUnit: "million barrels/day", maxLagMonths: 2, geography: "Global", aggregation: "monthly-average" },
   "eia-oil-supply": { source: "EIA STEO - world petroleum and other liquids production (historical estimates)", url: steoOilUrl, seriesId: eiaOilDefinitions["eia-oil-supply"].seriesId, provider: "eia", frequency: "monthly", measurement: "rate", normalizedUnit: "million barrels/day", maxLagMonths: 2, geography: "Global", aggregation: "monthly-average" },

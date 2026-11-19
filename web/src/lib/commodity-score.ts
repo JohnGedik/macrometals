@@ -63,7 +63,7 @@ export type CommodityConfiguration = {
   scoreTitle: Localized<string>;
   summaryTone?: Localized<string>;
   priceRelationships?: Readonly<Record<string, number>>;
-  scoreSources?: Readonly<Record<string, "dxy" | "real-yields" | "m2" | "breakeven-5y" | "breakeven-10y" | "wgc-central-bank" | "wgc-etf-holdings" | "cftc-gold-cot" | "cftc-silver-cot" | "cftc-wti-cot" | "gpr" | "silver-industrial-demand" | "silver-solar-demand" | "silver-mine-supply" | "silver-etp-holdings" | "eia-oil-demand" | "eia-oil-supply" | "eia-oil-inventories" | "eia-oil-spare-capacity">>;
+  scoreSources?: Readonly<Record<string, "dxy" | "real-yields" | "m2" | "breakeven-5y" | "breakeven-10y" | "wgc-central-bank" | "wgc-etf-holdings" | "cftc-gold-cot" | "cftc-silver-cot" | "cftc-wti-cot" | "gpr" | "silver-industrial-demand" | "silver-solar-demand" | "silver-mine-supply" | "silver-etp-holdings" | "copper-industrial-demand" | "copper-mine-supply" | "china-pmi" | "eia-oil-demand" | "eia-oil-supply" | "eia-oil-inventories" | "eia-oil-spare-capacity">>;
   scoringPolicy?: {
     mode: "sourced-only" | "research";
     minimumCoverage: number;

@@ -9,7 +9,7 @@ import { fredApiResponseToCsv, fredSeriesDefinitions, parseFredObservations } fr
 import { createSourceSnapshot } from "@/lib/source-snapshots";
 import { archiveSourceSnapshot } from "@/lib/snapshot-archive";
 import { getH6ReleaseEvidence } from "@/lib/release-evidence";
-import { fredArchivePermitted, getSourceRights, unverifiedSampleRights, type SourceRightsDisclosure } from "@/lib/source-rights";
+import { fredArchivePermitted, getSourceRights, type SourceRightsDisclosure } from "@/lib/source-rights";
 import { hydrateCommodityObservations } from "@/lib/commodity-data";
 import { wgcCentralBankCountryObservations, wgcObservationFeeds } from "@/lib/wgc-gold-observations";
 import { silverIndustrialFeed, silverSolarFeed, silverMineFeed, silverEtpFeed } from "@/lib/silver-industrial-observations";
@@ -17,6 +17,7 @@ import { cftcGoldCotApiUrl, cftcCotDefinitions, parseCftcManagedMoney } from "@/
 import { gprDownloadUrl, gprSeriesId, parseRecentGprRows } from "@/lib/gpr";
 import { currentStressIndex, derivedDataHealth, stressIndexAt, type DerivedDependency } from "@/lib/derived-data";
 import { getEiaOilFeeds } from "@/lib/eia-oil";
+import { getCopperFeeds } from "@/lib/copper-data";
 
 export type { CommodityKey } from "@/lib/commodity-config";
 
@@ -578,7 +579,7 @@ async function loadMacroScore(config: CommodityConfiguration, locale: Locale,
         dataHealth: indicator.dataHealth ? { ...indicator.dataHealth, observedAt: monthStart, checkedAt: requestStartedAt } : indicator.dataHealth,
       } : indicator),
   } : config;
-  const [dxy, realYields, m2, breakeven, cot, gpr, silverBreakeven, silverCot, wtiCot, oilFeeds] = await Promise.all([
+  const [dxy, realYields, m2, breakeven, cot, gpr, silverBreakeven, silverCot, wtiCot, oilFeeds, copperFeeds] = await Promise.all([
     requestedSources.has("dxy") ? getFredSeries("DTWEXBGS") : Promise.resolve(null),
     requestedSources.has("real-yields") ? loadRealYields() : Promise.resolve(null),
     requestedSources.has("m2") ? getFredSeries("M2SL") : Promise.resolve(null),
@@ -589,6 +590,7 @@ async function loadMacroScore(config: CommodityConfiguration, locale: Locale,
     requestedSources.has("cftc-silver-cot") ? getCftcCotSeries("silver") : Promise.resolve(null),
     requestedSources.has("cftc-wti-cot") ? getCftcCotSeries("oil") : Promise.resolve(null),
     [...requestedSources].some((source) => source.startsWith("eia-oil-")) ? getEiaOilFeeds() : Promise.resolve({}),
+    [...requestedSources].some((source) => source.startsWith("copper-") || source === "china-pmi") ? getCopperFeeds() : Promise.resolve({}),
   ]);
   const checkedAt = Date.now() / 1000;
   const hydrationConfig = config.commodity === "gold" ? {
@@ -598,6 +600,7 @@ async function loadMacroScore(config: CommodityConfiguration, locale: Locale,
   } : activeConfig;
   const resolvedConfig = hydrateCommodityObservations(hydrationConfig, {
     ...oilFeeds,
+    ...copperFeeds,
     dxy: dxy?.points ?? null,
     "real-yields": realYields?.points ?? null,
     m2: m2?.points ?? null,

@@ -50,6 +50,7 @@ const { getSourceRights } = await import("./source-rights.ts");
 const { parseCftcGoldManagedMoney, parseCftcManagedMoney, cftcCotDefinitions, cftcGoldCotSeriesId } = await import("./cftc-cot.ts");
 const { parseRecentGprRows, gprSeriesId, gprDownloadUrl } = await import("./gpr.ts");
 const { parseSteoOil, parseEiaSpareCapacity, eiaOilDefinitions, steoOilUrl, spareCapacityUrl } = await import("./eia-oil-parser.ts");
+const { parseIcsgCopperTable, parseNbsChinaPmi, latestNbsPmiReleaseUrl } = await import("./copper-data-parser.ts");
 const XLSX = await import("@e965/xlsx");
 const { currentGoldSeasonality, goldSeasonalityProfile } = await import("./gold-macro-data.ts");
 const { derivedDataHealth, currentStressIndex, stressIndexAt } = await import("./derived-data.ts");
@@ -259,7 +260,7 @@ test("registered public commodities approve only explicitly cleared factors", ()
     assert.deepEqual(result.policy.approvedIndicators, config.commodity === "gold"
       ? ["gold-seasonality", "real-rates", "dxy", "breakeven", "central-bank-purchases", "etf-holdings", "cot-positioning"]
       : config.commodity === "silver" ? ["industrial-demand", "solar-demand", "etf-holdings", "mine-supply", "breakeven", "cot-positioning", "real-rates", "dxy"]
-      : config.commodity === "copper" ? ["dxy", "real-rates"]
+      : config.commodity === "copper" ? ["industrial-demand", "china-pmi", "mine-supply", "dxy", "real-rates"]
       : ["global-demand", "global-supply", "commercial-inventories", "spare-capacity", "dxy", "geopolitical-risk", "cot-positioning"]);
     assert.equal(result.score, null);
     assert.equal(result.coverage, config.commodity === "gold" ? 5 : 0);
@@ -287,7 +288,12 @@ test("Copper publishes only its existing FRED factors with disclosed partial cov
       ? [["2025-11-14", 1], ["2026-11-16", 2]]
       : [["2025-11-14", 100], ["2026-11-16", 95]]);
   };
-  const config = { ...commodityConfigurations.copper, contextProvider: undefined };
+  const config = {
+    ...commodityConfigurations.copper,
+    contextProvider: undefined,
+    scoringPolicy: { ...commodityConfigurations.copper.scoringPolicy, approvedIndicators: ["dxy", "real-rates"] },
+    scoreSources: { dxy: "dxy", "real-rates": "real-yields" },
+  };
   try {
     const dashboard = await getMacroIndicators(config, "en");
     assert.deepEqual(requested.toSorted(), ["DFII10", "DTWEXBGS"]);
@@ -763,7 +769,7 @@ test("public dashboards hide samples with undocumented origins while excluding t
     assert.deepEqual(dashboard.summary.dataMix, config.commodity === "gold"
       ? { sourcedWeight: 5, sampleWeight: 0, excludedWeight: 95 }
       : { sourcedWeight: 0, sampleWeight: 0, excludedWeight: 100 });
-    assert.equal(dashboard.summary.release.approvedCount, config.commodity === "silver" ? 8 : config.commodity === "copper" ? 2 : 7);
+    assert.equal(dashboard.summary.release.approvedCount, config.commodity === "silver" ? 8 : config.commodity === "copper" ? 5 : 7);
     assert.equal(dashboard.summary.release.referenceSampleWeight, config.commodity === "gold" ? 95 : 100);
     const seasonality = dashboard.cards.find((card) => card.id === "gold-seasonality");
     const unverifiedSamples = dashboard.cards.filter((card) => card.id !== "gold-seasonality");
@@ -2000,6 +2006,37 @@ test("WTI managed-money feed has an independent permission and rejects other con
     if (previous === undefined) delete process.env.CFTC_COT_WTI_PUBLIC_USE_CONFIRMED;
     else process.env.CFTC_COT_WTI_PUBLIC_USE_CONFIRMED = previous;
   }
+});
+
+test("Copper parsers preserve approved ICSG and NBS series semantics", () => {
+  const checkedAt = Date.parse("2026-11-18T16:00:00Z") / 1000;
+  const icsgText = `TABLE 1. WORLD REFINED COPPER PRODUCTION AND USAGE TRENDS
+Thousand metric tonnes, copper
+2022 2023 2024 2025 Jan-Aug 2026 p/
+World Copper Mine Production
+(Concentrate & SX-EW) 21,904 22,346 22,955 23,180 15,220
+World Refined Copper Usage 2/ 25,857 26,633 27,416 28,159 18,960`;
+  const copper = parseIcsgCopperTable(icsgText, checkedAt);
+  assert.equal(copper["copper-mine-supply"].at(-1).value, 23.18);
+  assert.equal(copper["copper-industrial-demand"].at(-1).value, 28.159);
+  assert.equal(copper["copper-industrial-demand"].at(-1).provenance.aggregation, "annual-total");
+
+  const index = `<a href="./202611/t20261103_1965735.html">Purchasing Managers’ Index for October 2026</a>`;
+  const sourceUrl = latestNbsPmiReleaseUrl(index);
+  const rows = [
+    "2025-October 49.0 49.7", "November 49.2 50.0", "December 50.1 51.7",
+    "2026-January 49.3 50.6", "February 49.0 49.6", "March 50.4 51.4",
+    "April 50.3 51.5", "May 50.0 51.2", "June 50.3 51.4",
+    "July 49.2 49.9", "August 49.8 50.4", "September 50.1 51.7", "October 49.3 49.8",
+  ].map((row) => {
+    const [label, pmi, production] = row.split(" ");
+    return `<tr><td>${label}</td><td>${pmi}</td><td>${production}</td></tr>`;
+  }).join("");
+  const pmi = parseNbsChinaPmi(`<table><tr><th>PMI</th><th>Production Index</th><th>New Order Index</th></tr>${rows}</table>`, sourceUrl, checkedAt);
+  assert.equal(pmi.length, 13);
+  assert.equal(pmi.at(-1).value, 49.3);
+  assert.equal(pmi.at(-1).reportingPeriod.label, "2026-10");
+  assert.equal(pmi.at(-1).provenance.seasonalAdjustment, "SA");
 });
 
 test("Oil assembles all seven verified sources in both locales with 90 percent coverage and hourly EIA reuse", async () => {
