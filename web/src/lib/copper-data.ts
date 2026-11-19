@@ -1,5 +1,4 @@
 import "server-only";
-import { getDocument } from "pdfjs-dist/legacy/build/pdf.mjs";
 import {
   icsgCopperTableUrl, latestNbsPmiReleaseUrl, nbsPressReleaseIndexUrl, parseIcsgCopperTable, parseNbsChinaPmi,
 } from "@/lib/copper-data-parser";
@@ -36,6 +35,7 @@ async function loadIcsg(retrievedAt: number) {
   const response = await fetchApprovedSource(icsgCopperTableUrl, 30_000);
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (!bytes.length || bytes.length > 8_000_000) throw new Error("ICSG copper table is empty or exceeds the size limit");
+  const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const document = await getDocument({ data: bytes, disableFontFace: true, useSystemFonts: true }).promise;
   try {
     const page = await document.getPage(1);
