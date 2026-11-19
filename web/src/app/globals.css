@@ -578,6 +578,46 @@ textarea:focus-visible {
   gap: 42px 28px;
 }
 
+.home-macro-scores {
+  padding-top: 46px;
+  padding-bottom: 48px;
+}
+.home-macro-scores .section-heading { align-items: end; margin-bottom: 22px; }
+.home-macro-scores-note { max-width: 300px; margin: 0; color: var(--muted); font-size: 11px; line-height: 1.5; text-align: right; }
+.home-macro-score-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.home-macro-score-card {
+  --score-tone: #8b918a;
+  display: block;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+  border-top: 3px solid var(--score-tone);
+  background: var(--paper-light);
+  color: var(--ink);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+.home-macro-score-card:hover {
+  box-shadow: 0 8px 24px rgb(28 41 36 / 10%);
+  transform: translateY(-2px);
+}
+.home-macro-score-card.impact-bullish { --score-tone: #39745e; }
+.home-macro-score-card.impact-neutral { --score-tone: #b99136; }
+.home-macro-score-card.impact-bearish { --score-tone: #bd5a43; }
+.home-macro-score-card.impact-unavailable { --score-tone: #8b918a; }
+.home-macro-score-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.home-macro-score-heading h3 { margin: 0; color: var(--ink-soft); font-size: 14px; }
+.home-macro-score-value { display: flex; align-items: baseline; gap: 6px; margin-top: 20px; }
+.home-macro-score-value strong { color: var(--score-tone); font-family: var(--font-display), Georgia, serif; font-size: 44px; font-weight: 500; line-height: 1; font-variant-numeric: tabular-nums; }
+.home-macro-score-value span { color: var(--muted); font-size: 11px; }
+.home-macro-score-status { display: flex; justify-content: space-between; gap: 8px; margin-top: 9px; color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; }
+.home-macro-score-track { height: 4px; margin-top: 13px; }
+.home-macro-score-track span { background: var(--score-tone); }
+.home-macro-scores-loading { padding-top: 28px; padding-bottom: 28px; color: var(--muted); font-size: 12px; }
+
 .macro-indicators {
   margin: 34px 0 52px;
   padding: 27px 0 20px;
@@ -2735,6 +2775,8 @@ textarea:focus-visible {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .home-macro-score-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
   .commodity-header {
     grid-template-columns: minmax(240px, 0.9fr) minmax(0, 1.1fr);
     gap: 20px;
@@ -2904,6 +2946,10 @@ textarea:focus-visible {
     grid-template-columns: 1fr;
     gap: 31px;
   }
+
+  .home-macro-scores { padding-top: 32px; padding-bottom: 34px; }
+  .home-macro-scores-note { text-align: left; }
+  .home-macro-score-grid { grid-template-columns: 1fr; }
 
   .macro-indicators {
     margin: 27px 0 40px;
