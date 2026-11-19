@@ -616,7 +616,102 @@ textarea:focus-visible {
 .home-macro-score-status { display: flex; justify-content: space-between; gap: 8px; margin-top: 9px; color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; }
 .home-macro-score-track { height: 4px; margin-top: 13px; }
 .home-macro-score-track span { background: var(--score-tone); }
-.home-macro-scores-loading { padding-top: 28px; padding-bottom: 28px; color: var(--muted); font-size: 12px; }
+.home-macro-scores-loading {
+  min-height: 250px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 30px;
+  overflow: hidden;
+  padding-top: 38px;
+  padding-bottom: 42px;
+}
+.macro-loading-copy {
+  display: flex;
+  align-items: center;
+  gap: 22px;
+}
+.macro-loading-copy strong {
+  max-width: 720px;
+  color: var(--forest);
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(34px, 5vw, 64px);
+  font-weight: 500;
+  line-height: 1.04;
+  letter-spacing: -0.035em;
+  animation: macro-loading-copy-in 700ms ease both;
+}
+.macro-loading-orbit {
+  position: relative;
+  width: 70px;
+  height: 70px;
+  flex: 0 0 70px;
+  border: 1px solid rgb(181 83 55 / 34%);
+  border-radius: 50%;
+  animation: macro-loading-spin 2.8s linear infinite;
+}
+.macro-loading-orbit::after {
+  position: absolute;
+  inset: 12px;
+  border: 1px dashed rgb(47 120 103 / 50%);
+  border-radius: 50%;
+  content: "";
+  animation: macro-loading-spin 1.9s linear infinite reverse;
+}
+.macro-loading-orbit > span {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--yellow);
+  box-shadow: 0 0 0 5px rgb(215 189 100 / 15%);
+  animation: macro-loading-pulse 1.15s ease-in-out infinite alternate;
+}
+.macro-loading-orbit > span:nth-child(1) { top: -5px; left: 27px; }
+.macro-loading-orbit > span:nth-child(2) { right: 2px; bottom: 8px; background: var(--copper); animation-delay: 180ms; }
+.macro-loading-orbit > span:nth-child(3) { left: 0; bottom: 12px; background: var(--green); animation-delay: 360ms; }
+.macro-loading-bars {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.macro-loading-bar {
+  position: relative;
+  height: 12px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgb(28 41 36 / 8%);
+}
+.macro-loading-bar::after {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, var(--loading-tone) 45%, transparent);
+  content: "";
+  transform: translateX(-100%);
+  animation: macro-loading-sweep 1.45s ease-in-out infinite;
+}
+.macro-loading-bar-gold { --loading-tone: #d7bd64; }
+.macro-loading-bar-silver { --loading-tone: #aeb7b3; }
+.macro-loading-bar-copper { --loading-tone: #b95337; }
+.macro-loading-bar-oil { --loading-tone: #2f7867; }
+.macro-loading-bar:nth-child(2)::after { animation-delay: 120ms; }
+.macro-loading-bar:nth-child(3)::after { animation-delay: 240ms; }
+.macro-loading-bar:nth-child(4)::after { animation-delay: 360ms; }
+
+@keyframes macro-loading-copy-in {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes macro-loading-spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes macro-loading-pulse {
+  to { transform: scale(.65); opacity: .65; }
+}
+@keyframes macro-loading-sweep {
+  55%, 100% { transform: translateX(100%); }
+}
 
 .macro-indicators {
   margin: 34px 0 52px;
@@ -2970,6 +3065,13 @@ textarea:focus-visible {
   .home-macro-scores { padding-top: 32px; padding-bottom: 34px; }
   .home-macro-scores-note { text-align: left; }
   .home-macro-score-grid { grid-template-columns: 1fr; }
+  .home-macro-scores-loading { min-height: 220px; gap: 24px; }
+  .macro-loading-copy { align-items: flex-start; gap: 16px; }
+  .macro-loading-orbit { width: 48px; height: 48px; flex-basis: 48px; }
+  .macro-loading-orbit > span { width: 11px; height: 11px; }
+  .macro-loading-orbit > span:nth-child(1) { left: 18px; }
+  .macro-loading-orbit > span:nth-child(2) { right: -1px; bottom: 4px; }
+  .macro-loading-bars { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 
   .macro-indicators {
     margin: 27px 0 40px;

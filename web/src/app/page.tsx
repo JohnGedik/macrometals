@@ -17,7 +17,24 @@ export default async function HomePage() {
   return (
     <>
       <div className="market-note"><span>{t.strapline}</span><span>{t.englishTurkish}</span></div>
-      <Suspense fallback={<p className="home-macro-scores-loading content-width" role="status">{t.loadingScores}</p>}>
+      <Suspense fallback={
+        <section className="home-macro-scores-loading content-width" role="status" aria-live="polite">
+          <div className="macro-loading-copy">
+            <span className="macro-loading-orbit" aria-hidden="true">
+              <span />
+              <span />
+              <span />
+            </span>
+            <strong>{t.loadingScores}</strong>
+          </div>
+          <div className="macro-loading-bars" aria-hidden="true">
+            <span className="macro-loading-bar macro-loading-bar-gold" />
+            <span className="macro-loading-bar macro-loading-bar-silver" />
+            <span className="macro-loading-bar macro-loading-bar-copper" />
+            <span className="macro-loading-bar macro-loading-bar-oil" />
+          </div>
+        </section>
+      }>
         <HomeMacroScores locale={locale} />
       </Suspense>
 
