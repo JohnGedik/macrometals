@@ -3,6 +3,8 @@ import type { DataObservation } from "@/lib/observation-data";
 
 export const wgcCentralBankSeriesId = "WGC-CENTRAL-BANK-REPORTED-CHANGES";
 export const wgcEtfSeriesId = "WGC-GLOBAL-ETF-HOLDINGS";
+export const wgcCentralBankCountryDisplayEnabled =
+  process.env.WGC_CENTRAL_BANK_GOLD_COUNTRY_DISPLAY_CONFIRMED === "true";
 
 const centralBankSourceUrl = "https://www.gold.org/goldhub/data/gold-reserves-by-country";
 const etfSourceUrl = "https://www.gold.org/goldhub/data/gold-etfs-holdings-and-flows";
@@ -13,6 +15,7 @@ function observations(
   sourceUrl: string,
   measurement: "flow" | "stock",
   aggregation: "monthly-sum" | "month-end",
+  geography = "Global",
 ): DataObservation[] {
   if (!Number.isFinite(snapshot.generatedAt) || snapshot.generatedAt <= 0) return [];
   return rows.map((row) => {
@@ -38,7 +41,7 @@ function observations(
         vintage: null,
         revisionStatus: "unknown" as const,
         valueType: "reported" as const,
-        geography: "Global",
+        geography,
         measurement,
         rawValue: value,
         rawUnit: "tonnes",
@@ -67,3 +70,14 @@ export const wgcObservationFeeds = {
     "month-end",
   ),
 } satisfies Record<string, DataObservation[]>;
+
+const countrySnapshot = snapshot as typeof snapshot & {
+  centralBankCountryChanges?: Record<string, readonly (readonly (string | number)[])[]>;
+};
+
+export const wgcCentralBankCountryObservations = Object.fromEntries(
+  (wgcCentralBankCountryDisplayEnabled ? Object.entries(countrySnapshot.centralBankCountryChanges ?? {}) : []).map(([country, rows]) => [
+    country,
+    observations(rows, wgcCentralBankSeriesId, centralBankSourceUrl, "flow", "monthly-sum", country),
+  ]),
+) satisfies Record<string, DataObservation[]>;

@@ -36,6 +36,10 @@ test("parses reported country net changes and monthly global ETF holdings", asyn
     assert.deepEqual(parsed, {
       generatedAt: 1_800_000_000,
       centralBankNetChanges: [["2025-01", 3.75], ["2025-02", -0.5]],
+      centralBankCountryChanges: {
+        "Country A": [["2025-01", 2.5], ["2025-02", -1]],
+        "Country B": [["2025-01", 1.25], ["2025-02", 0.5]],
+      },
       etfHoldingsTonnes: [["2025-01", 4100.25], ["2025-02", 4122.5]],
     });
   } finally {

@@ -883,6 +883,27 @@ textarea:focus-visible {
   color: var(--muted);
 }
 
+.indicator-country-filter {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+}
+.indicator-country-filter select {
+  min-width: 0;
+  width: 100%;
+  padding: 5px 28px 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  background: var(--paper-light);
+  color: var(--ink);
+  font: inherit;
+}
+
 .indicator-chart-caption {
   display: block;
   height: 18px;

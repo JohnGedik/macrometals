@@ -100,7 +100,7 @@ cd web
 npm run import:wgc -- "C:\path\to\changes-workbook.xlsx" "C:\path\to\etf-workbook.xlsx"
 ```
 
-The importer writes only derived monthly aggregates to `web/src/lib/wgc-gold-observations.json`; do not commit the raw workbooks. Public display is controlled by `WGC_CENTRAL_BANK_GOLD_PUBLIC_USE_CONFIRMED` and `WGC_GOLD_ETF_PUBLIC_USE_CONFIRMED`. The anonymous cron downloader is not an authenticated WGC service and does not replace this import step.
+The importer writes derived monthly aggregates and country-level reserve changes to `web/src/lib/wgc-gold-observations.json`; do not commit the raw workbooks. Aggregate public display is controlled by `WGC_CENTRAL_BANK_GOLD_PUBLIC_USE_CONFIRMED` and `WGC_GOLD_ETF_PUBLIC_USE_CONFIRMED`. Individual-country display additionally requires `WGC_CENTRAL_BANK_GOLD_COUNTRY_DISPLAY_CONFIRMED=true` and should remain disabled until the applicable permission is confirmed. The anonymous cron downloader is not an authenticated WGC service and does not replace this import step.
 
 ### Industrial silver demand
 

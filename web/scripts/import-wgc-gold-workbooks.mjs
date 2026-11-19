@@ -12,6 +12,7 @@ async function main() {
   const outputPath = fileURLToPath(new URL("../src/lib/wgc-gold-observations.json", import.meta.url));
   await writeFile(outputPath, `${JSON.stringify(snapshot, null, 2)}\n`, "utf8");
   console.log(`Generated ${snapshot.centralBankNetChanges.length} central-bank and ${snapshot.etfHoldingsTonnes.length} ETF monthly observations.`);
+  console.log(`Preserved monthly changes for ${Object.keys(snapshot.centralBankCountryChanges).length} countries.`);
   console.log(`Latest central-bank period: ${snapshot.centralBankNetChanges.at(-1)?.[0] ?? "none"}`);
   console.log(`Latest ETF holdings period: ${snapshot.etfHoldingsTonnes.at(-1)?.[0] ?? "none"}`);
 }

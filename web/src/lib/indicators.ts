@@ -11,7 +11,7 @@ import { archiveSourceSnapshot } from "@/lib/snapshot-archive";
 import { getH6ReleaseEvidence } from "@/lib/release-evidence";
 import { fredArchivePermitted, getSourceRights, unverifiedSampleRights, type SourceRightsDisclosure } from "@/lib/source-rights";
 import { hydrateCommodityObservations } from "@/lib/commodity-data";
-import { wgcObservationFeeds } from "@/lib/wgc-gold-observations";
+import { wgcCentralBankCountryObservations, wgcObservationFeeds } from "@/lib/wgc-gold-observations";
 import { silverIndustrialFeed, silverSolarFeed, silverMineFeed, silverEtpFeed } from "@/lib/silver-industrial-observations";
 import { cftcGoldCotApiUrl, cftcCotDefinitions, parseCftcManagedMoney } from "@/lib/cftc-cot";
 import { gprDownloadUrl, gprSeriesId, parseRecentGprRows } from "@/lib/gpr";
@@ -50,7 +50,15 @@ export type IndicatorCardData = {
   dataHealth?: IndicatorDataHealth;
   severity?: string;
   provenance?: string;
-  chart?: { points: IndicatorChartPoint[]; unit: string; digits: number; axisDigits?: number; label: string; zeroBaseline: boolean };
+  chart?: {
+    points: IndicatorChartPoint[];
+    unit: string;
+    digits: number;
+    axisDigits?: number;
+    label: string;
+    zeroBaseline: boolean;
+    series?: { label: string; points: IndicatorChartPoint[] }[];
+  };
 };
 
 export type MacroScoreSummary = {
@@ -448,6 +456,19 @@ function macroScoreCards(locale: Locale, config: CommodityConfiguration) {
         group: metric.tier === 1 ? "tier1" : "tier2",
         severity: levelInput && current !== null ? current < 0 ? t.severity.low : current < 0.5 ? t.seasonalityLevel.neutral : current <= 1 ? t.severity.elevated : t.severity.high : undefined,
         chart: { points, unit: unitLabel, digits: metric.digits, label: levelInput ? t.seasonalityChartDescription : metric.dataHealth?.kind === "sourced" ? t.sourcedHistory : t.lastTenYears, zeroBaseline: levelInput },
+        ...(metric.id === "central-bank-purchases" ? {
+          chart: {
+            points,
+            unit: unitLabel,
+            digits: metric.digits,
+            label: metric.dataHealth?.kind === "sourced" ? t.sourcedHistory : t.lastTenYears,
+            zeroBaseline: true,
+            series: Object.entries(wgcCentralBankCountryObservations).map(([label, observations]) => ({
+              label,
+              points: lastTenYearPoints(observations).map(({ time, value }) => ({ time, value })),
+            })).filter((series) => series.points.length),
+          },
+        } : {}),
       }), factorScore: result.indicators[index].score, scoreExclusion: result.indicators[index].exclusionReason, dataHealth: metric.dataHealth,
       ninetyDayChange: metric.dataHealth?.kind === "sourced" && metric.dataHealth.frequency === "daily" ? formatChange(change90) : undefined };
   });

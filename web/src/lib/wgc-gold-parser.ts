@@ -3,6 +3,7 @@ import ExcelJS from "exceljs";
 export type WgcGoldSnapshot = {
   generatedAt: number;
   centralBankNetChanges: [string, number][];
+  centralBankCountryChanges: Record<string, [string, number][]>;
   etfHoldingsTonnes: [string, number][];
 };
 
@@ -40,7 +41,7 @@ function assertAscendingUniqueMonths(rows: readonly [string, number][], source: 
   }
 }
 
-function parseCentralBankChanges(workbook: ExcelJS.Workbook): [string, number][] {
+function parseCentralBankChanges(workbook: ExcelJS.Workbook) {
   const sheet = workbook.getWorksheet("Monthly");
   if (!sheet || scalar(sheet.getCell("A1").value) !== "Country") {
     throw new Error("WGC central-bank workbook is missing the expected Monthly sheet");
@@ -55,17 +56,25 @@ function parseCentralBankChanges(workbook: ExcelJS.Workbook): [string, number][]
     columns.push({ column, month });
   }
 
+  const countryChanges = new Map<string, [string, number][]>();
+  const countries = new Set<string>();
   const rows = columns.map(({ column, month }): [string, number] => {
     let total = 0;
     let numericCells = 0;
     for (let rowNumber = 2; rowNumber <= sheet.rowCount; rowNumber += 1) {
       const country = scalar(sheet.getRow(rowNumber).getCell(1).value);
       if (typeof country !== "string" || !country.trim()) continue;
+      const countryName = country.trim();
       const value = scalar(sheet.getRow(rowNumber).getCell(column).value);
       if (value === null || value === undefined || value === "") continue;
       if (typeof value !== "number" || !Number.isFinite(value)) {
         throw new Error(`WGC Monthly sheet has a non-numeric change at row ${rowNumber}, column ${column}`);
       }
+      if (countryChanges.has(countryName) && countryChanges.get(countryName)!.at(-1)?.[0] === month) {
+        throw new Error(`WGC Monthly sheet has duplicate country data for ${countryName} in ${month}`);
+      }
+      countryChanges.set(countryName, [...(countryChanges.get(countryName) ?? []), [month, value]]);
+      countries.add(countryName);
       total += value;
       numericCells += 1;
     }
@@ -73,7 +82,11 @@ function parseCentralBankChanges(workbook: ExcelJS.Workbook): [string, number][]
     return [month, total];
   });
   assertAscendingUniqueMonths(rows, "WGC central-bank");
-  return rows;
+  for (const country of countries) assertAscendingUniqueMonths(countryChanges.get(country)!, `WGC central-bank ${country}`);
+  return {
+    centralBankNetChanges: rows,
+    centralBankCountryChanges: Object.fromEntries([...countryChanges].sort(([first], [second]) => first.localeCompare(second))),
+  };
 }
 
 function parseEtfHoldings(workbook: ExcelJS.Workbook): [string, number][] {
@@ -117,9 +130,11 @@ export async function parseWgcGoldWorkbooks(
     loadWorkbook(centralBankPath),
     loadWorkbook(etfPath),
   ]);
+  const { centralBankNetChanges, centralBankCountryChanges } = parseCentralBankChanges(centralBank);
   return {
     generatedAt,
-    centralBankNetChanges: parseCentralBankChanges(centralBank),
+    centralBankNetChanges,
+    centralBankCountryChanges,
     etfHoldingsTonnes: parseEtfHoldings(etf),
   };
 }

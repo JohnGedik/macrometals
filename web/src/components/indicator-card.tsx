@@ -1,7 +1,7 @@
 import { ArrowDown, ArrowUp, Minus } from "lucide-react";
 import type { IndicatorCardData } from "@/lib/indicators";
 import { messages, type Locale } from "@/lib/i18n";
-import { IndicatorChart } from "@/components/indicator-chart";
+import { IndicatorCountryChart } from "@/components/indicator-country-chart";
 import { PriceRelationship } from "@/components/price-relationship";
 import { IndicatorDataHealth } from "@/components/indicator-data-health";
 
@@ -53,7 +53,8 @@ export function IndicatorCard({ card, locale }: { card: IndicatorCardData; local
       )}
       {card.comparison && <div className="indicator-comparison"><span>{card.comparison.label}</span><strong>{card.comparison.value}</strong></div>}
       <IndicatorStatus impact={card.impact} impactLabel={card.impactLabel} trend={card.trend} trendLabel={card.trendLabel} subject={card.subject} severity={card.severity} />
-      {card.chart && <IndicatorChart name={card.name} points={card.chart.points} locale={locale} unit={card.chart.unit} digits={card.chart.digits} axisDigits={card.chart.axisDigits} lastYearLabel={t.lastYear} chartLabel={card.chart.label} zeroBaseline={card.chart.zeroBaseline} />}
+      {card.chart && <IndicatorCountryChart chart={card.chart} name={card.name} locale={locale}
+        countryLabel={t.country} allCountriesLabel={t.allCountries} lastYearLabel={t.lastYear} />}
       {card.score !== undefined && (
         <div className="stress-meter">
           <div className="stress-meter-labels"><span>0</span><strong>{card.severity}</strong><span>100</span></div>
