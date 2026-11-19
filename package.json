@@ -1,0 +1,11 @@
+{
+  "name": "macro-metals",
+  "private": true,
+  "dependencies": {
+    "next": "16.4.5"
+  },
+  "scripts": {
+    "build": "npm --prefix web run build",
+    "start": "npm --prefix web run start"
+  }
+}
