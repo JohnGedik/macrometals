@@ -2307,6 +2307,26 @@ textarea:focus-visible {
   margin: 16px 0;
 }
 
+.article-language-fields {
+  display: grid;
+  gap: 20px;
+  margin-bottom: 22px;
+}
+.article-language-version {
+  min-width: 0;
+  margin: 0;
+  padding: 18px;
+  border: 1px solid var(--line);
+}
+.article-language-version legend {
+  padding: 0 6px;
+  color: var(--ink-soft);
+  font-size: 14px;
+  font-weight: 700;
+}
+.article-language-version > label { display: block; margin-top: 14px; }
+.article-language-version > .muted-copy { margin: 0; font-size: 11px; }
+
 .discussion-votes [aria-pressed="true"] {
   border-color: var(--forest);
   background: var(--forest);

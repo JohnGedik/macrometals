@@ -107,6 +107,7 @@ export default async function ArticlePage({ params, searchParams }: RouteProps) 
         <div className="article-reading-column">
           <CommunityNotice error={status.error} notice={status.notice} locale={locale} />
           <div className="community-article-actions">
+            {currentUserId && currentUserId === article.authorId && <Link className="button-secondary" href={`/write/${article.slug}`}>{communityCopy[locale].edit}</Link>}
             {saveError ? <p role="alert">{communityCopy[locale].failed}</p> : <SaveArticleControl id={article.id} path={`/articles/${article.slug}`} saved={saved} signedIn={!!currentUserId} locale={locale} />}
             <ReportControl type="article" id={article.id} path={`/articles/${article.slug}`} signedIn={!!currentUserId} locale={locale} />
           </div>

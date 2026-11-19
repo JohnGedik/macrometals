@@ -21,18 +21,33 @@ export async function saveArticleAction(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "auth" as const };
 
-  const title = String(formData.get("title") ?? "").trim();
-  const summary = String(formData.get("summary") ?? "").trim();
-  const content = String(formData.get("content_markdown") ?? "").trim();
+  const english = {
+    language: "en" as const,
+    title: String(formData.get("title_en") ?? "").trim(),
+    summary: String(formData.get("summary_en") ?? "").trim(),
+    content: String(formData.get("content_markdown_en") ?? "").trim(),
+  };
+  const turkish = {
+    language: "tr" as const,
+    title: String(formData.get("title_tr") ?? "").trim(),
+    summary: String(formData.get("summary_tr") ?? "").trim(),
+    content: String(formData.get("content_markdown_tr") ?? "").trim(),
+  };
+  const translations = [english, turkish].filter((translation) => translation.title || translation.summary || translation.content);
+  const title = english.title;
+  const summary = english.summary;
+  const content = english.content;
   const categorySlug = String(formData.get("category") ?? "");
-  const language = String(formData.get("language") ?? "en");
   const image = String(formData.get("featured_image") ?? "").trim();
   const tags = [...new Set(String(formData.get("tags") ?? "").split(",").map((tag) => tag.trim()).filter(Boolean))].slice(0, 8);
   const articleId = String(formData.get("article_id") ?? "");
   const intent = String(formData.get("intent") ?? "draft");
   const published = intent === "publish";
 
-  if (!title || title.length > 140 || !summary || summary.length > 300 || !content || content.length > 100000 || !allowedLanguages.has(language) || tags.some((tag) => tag.length > 40)) {
+  if (!title || title.length > 140 || !summary || summary.length > 300 || !content || content.length > 100000
+    || translations.some((translation) => !translation.title || translation.title.length > 140 || !translation.summary
+      || translation.summary.length > 300 || !translation.content || translation.content.length > 100000
+      || !allowedLanguages.has(translation.language)) || tags.some((tag) => tag.length > 40)) {
     return { error: "invalid" as const };
   }
   if (image && (!/^https?:\/\//i.test(image) || image.length > 2048)) return { error: "invalid" as const };
@@ -68,7 +83,7 @@ export async function saveArticleAction(formData: FormData) {
     content_html: null,
     cover_image: image || null,
     featured_image: image || null,
-    language,
+    language: "en",
     category_id: category.id,
     published,
     published_at: published ? new Date().toISOString() : null,
@@ -89,6 +104,29 @@ export async function saveArticleAction(formData: FormData) {
       return { error: "save" as const };
     }
     savedId = data.id;
+  }
+
+  const translationRows = translations.map((translation) => ({
+    article_id: savedId,
+    language: translation.language,
+    title: translation.title,
+    summary: translation.summary,
+    body: translation.content,
+    content_markdown: translation.content,
+  }));
+  const { error: translationsError } = await supabase.from("article_translations")
+    .upsert(translationRows, { onConflict: "article_id,language" });
+  if (translationsError) {
+    console.error("Could not save article translations", translationsError.code);
+    return { error: "save" as const };
+  }
+  if (!turkish.title) {
+    const { error: deleteTranslationError } = await supabase.from("article_translations")
+      .delete().eq("article_id", savedId).eq("language", "tr");
+    if (deleteTranslationError) {
+      console.error("Could not remove article translation", deleteTranslationError.code);
+      return { error: "save" as const };
+    }
   }
 
   await supabase.from("article_tags").delete().eq("article_id", savedId);

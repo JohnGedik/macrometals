@@ -12,13 +12,14 @@ const categorySlugs = ["gold", "silver", "oil", "copper", "macro", "inflation", 
 
 export type ArticleEditorValues = {
   id?: string;
-  title?: string;
-  summary?: string;
-  content?: string;
+  translations?: Partial<Record<Locale, {
+    title: string;
+    summary: string;
+    content: string;
+  }>>;
   category?: string;
   tags?: string[];
   image?: string;
-  language?: Locale;
 };
 
 export function ArticleEditor({
@@ -34,7 +35,10 @@ export function ArticleEditor({
 }) {
   const t = messages[locale].editor;
   const router = useRouter();
-  const [content, setContent] = useState(values.content ?? "");
+  const [content, setContent] = useState({
+    en: values.translations?.en?.content ?? "",
+    tr: values.translations?.tr?.content ?? "",
+  });
   const [submitError, setSubmitError] = useState<"invalid" | "save" | "auth" | "profile" | null>(null);
   const [pending, setPending] = useState(false);
   const categories = t.categories as readonly string[];
@@ -70,23 +74,28 @@ export function ArticleEditor({
       {saved && <p className="form-alert success" role="status">{t.saved}</p>}
       <form className="community-editor" method="post" onSubmit={submitArticle}>
         <input type="hidden" name="article_id" value={values.id ?? ""} />
-        <input type="hidden" name="content_markdown" value={content} />
-        <label htmlFor="article-title">{t.articleTitle}</label>
-        <input id="article-title" name="title" defaultValue={values.title} maxLength={140} required />
-        <label htmlFor="article-summary">{t.summary}</label>
-        <textarea id="article-summary" name="summary" defaultValue={values.summary} maxLength={300} rows={3} required />
+        <div className="article-language-fields">
+          {(["en", "tr"] as const).map((language) => <fieldset className="article-language-version" key={language}>
+            <legend>{language === "en" ? t.englishVersion : t.turkishVersion}</legend>
+            {language === "tr" && <p className="muted-copy">{t.translationOptional}</p>}
+            <input type="hidden" name={`content_markdown_${language}`} value={content[language]} />
+            <label htmlFor={`article-title-${language}`}>{t.articleTitle}</label>
+            <input id={`article-title-${language}`} name={`title_${language}`} defaultValue={values.translations?.[language]?.title} maxLength={140} required={language === "en"} />
+            <label htmlFor={`article-summary-${language}`}>{t.summary}</label>
+            <textarea id={`article-summary-${language}`} name={`summary_${language}`} defaultValue={values.translations?.[language]?.summary} maxLength={300} rows={3} required={language === "en"} />
+            <label>{t.content}</label>
+            <div className="community-markdown-editor" data-color-mode="light">
+              <MDEditor value={content[language]} onChange={(value) => setContent((current) => ({ ...current, [language]: value ?? "" }))} height={360} preview="live" textareaProps={{ placeholder: t.content, "aria-label": `${t.content} (${language.toUpperCase()})` }} />
+            </div>
+          </fieldset>)}
+        </div>
         <div className="community-editor-fields">
           <div><label htmlFor="article-category">{t.category}</label><select id="article-category" name="category" defaultValue={values.category ?? "macro"}>{categories.map((category, index) => <option key={categorySlugs[index]} value={categorySlugs[index]}>{category}</option>)}</select></div>
-          <div><label htmlFor="article-language">{t.language}</label><select id="article-language" name="language" defaultValue={values.language ?? locale}><option value="en">English</option><option value="tr">Türkçe</option></select></div>
         </div>
         <label htmlFor="article-tags">{t.tags}</label>
         <input id="article-tags" name="tags" defaultValue={values.tags?.join(", ")} placeholder={t.tagsHint} />
         <label htmlFor="article-image">{t.image}</label>
         <input id="article-image" name="featured_image" type="url" defaultValue={values.image} placeholder="https://" />
-        <label>{t.content}</label>
-        <div className="community-markdown-editor" data-color-mode="light">
-          <MDEditor value={content} onChange={(value) => setContent(value ?? "")} height={440} preview="live" textareaProps={{ placeholder: t.content, "aria-label": t.content }} />
-        </div>
         <div className="community-editor-actions">
           {values.id && <button className="button-secondary" type="submit" formAction={deleteArticleAction} formNoValidate disabled={pending}>{t.delete}</button>}
           <span />

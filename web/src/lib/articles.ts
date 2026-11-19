@@ -26,6 +26,7 @@ export type Article = {
   authorId?: string;
   category?: string;
   language?: Locale;
+  availableLanguages?: Locale[];
   upvotes?: number;
   downvotes?: number;
   score?: number;
@@ -58,6 +59,8 @@ function parseMarkdownArticle(source: string): Article {
       avatarUrl: typeof author.avatarUrl === "string" ? author.avatarUrl : null,
     },
     tags,
+    language: "en",
+    availableLanguages: ["en"],
   };
 
   return { ...metadata, body: content.trim() };
@@ -90,6 +93,8 @@ async function getMarkdownArticles(locale: Locale): Promise<Article[]> {
           summary: translated.summary,
           body: translated.body,
           author: { ...article.author, bio: translated.author.bio },
+          availableLanguages: ["en", "tr"] as Locale[],
+          language: locale,
         };
       }),
   );
@@ -98,7 +103,7 @@ async function getMarkdownArticles(locale: Locale): Promise<Article[]> {
 }
 
 export async function getArticles(locale: Locale = "en"): Promise<Article[]> {
-  const [editorial, community] = await Promise.all([getMarkdownArticles(locale), getCommunityArticles()]);
+  const [editorial, community] = await Promise.all([getMarkdownArticles(locale), getCommunityArticles(locale)]);
   const bySlug = new Map(community.map((article) => [article.slug, article]));
   for (const article of editorial) bySlug.set(article.slug, article);
   const articles = [...bySlug.values()];
@@ -136,7 +141,15 @@ type CommunityRow = {
 
 type VoteSummary = { article_id: string; upvotes: number; downvotes: number; user_vote: number };
 
-async function getCommunityArticles(slug?: string): Promise<Article[]> {
+type ArticleTranslationRow = {
+  article_id: string;
+  language: Locale;
+  title: string;
+  summary: string;
+  body: string;
+};
+
+async function getCommunityArticles(locale: Locale = "en", slug?: string): Promise<Article[]> {
   const supabase = await createSupabaseServerClient();
   if (!supabase) return [];
 
@@ -154,12 +167,14 @@ async function getCommunityArticles(slug?: string): Promise<Article[]> {
   const articleIds = rows.map((row) => row.id);
   const authorIds = [...new Set(rows.map((row) => row.author_id))];
   const categoryIds = [...new Set(rows.flatMap((row) => row.category_id ? [row.category_id] : []))];
-  const [profileResult, tagResult, categoryResult, voteResult] = await Promise.all([
+  const [profileResult, tagResult, categoryResult, voteResult, translationResult] = await Promise.all([
     supabase.from("profiles").select("id, slug, username, display_name, bio, avatar_url").in("id", authorIds),
     supabase.from("article_tags").select("article_id, tag_id").in("article_id", articleIds),
     categoryIds.length ? supabase.from("categories").select("id, name").in("id", categoryIds) : Promise.resolve({ data: [], error: null }),
     supabase.rpc("get_article_vote_summaries", { article_ids: articleIds }),
+    supabase.from("article_translations").select("article_id, language, title, summary, body").in("article_id", articleIds),
   ]);
+  if (translationResult.error) console.error("Could not load article translations", translationResult.error.code);
 
   const tagIds = [...new Set((tagResult.data ?? []).map((tag) => tag.tag_id))];
   const tagNamesResult = tagIds.length
@@ -175,6 +190,12 @@ async function getCommunityArticles(slug?: string): Promise<Article[]> {
   }
   const voteRows = (voteResult.data ?? []) as VoteSummary[];
   const votes = new Map(voteRows.map((vote) => [vote.article_id, vote]));
+  const translations = new Map<string, Map<Locale, ArticleTranslationRow>>();
+  for (const translation of (translationResult.data ?? []) as ArticleTranslationRow[]) {
+    const byLanguage = translations.get(translation.article_id) ?? new Map<Locale, ArticleTranslationRow>();
+    byLanguage.set(translation.language, translation);
+    translations.set(translation.article_id, byLanguage);
+  }
 
   return rows.flatMap((row) => {
     const profile = profiles.get(row.author_id);
@@ -182,12 +203,16 @@ async function getCommunityArticles(slug?: string): Promise<Article[]> {
     const vote = votes.get(row.id);
     const upvotes = Number(vote?.upvotes ?? 0);
     const downvotes = Number(vote?.downvotes ?? 0);
+    const byLanguage = translations.get(row.id);
+    const translation = byLanguage?.get(locale) ?? byLanguage?.get("en");
+    const availableLanguages = [...(byLanguage?.keys() ?? [])].sort();
+    const displayedLanguage = translation?.language ?? row.language;
     return [{
       id: row.id,
       slug: row.slug,
-      title: row.title,
-      summary: row.summary,
-      body: row.body,
+      title: translation?.title ?? row.title,
+      summary: translation?.summary ?? row.summary,
+      body: translation?.body ?? row.body,
       coverImage: row.featured_image || row.cover_image || "",
       publishedAt: row.published_at ?? row.created_at,
       author: {
@@ -201,7 +226,8 @@ async function getCommunityArticles(slug?: string): Promise<Article[]> {
       authorId: row.author_id,
       category: row.category_id ? categories.get(row.category_id) : undefined,
       tags: [...new Set([...(row.category_id && categories.get(row.category_id) ? [categories.get(row.category_id)!] : []), ...(tagsByArticle.get(row.id) ?? [])])],
-      language: row.language,
+      language: displayedLanguage,
+      availableLanguages: availableLanguages.length ? availableLanguages : [row.language],
       upvotes,
       downvotes,
       score: upvotes - downvotes,
@@ -213,7 +239,7 @@ async function getCommunityArticles(slug?: string): Promise<Article[]> {
 
 export async function getArticleBySlug(slug: string, locale: Locale = "en") {
   return (await getArticles(locale)).find((article) => article.slug === slug)
-    ?? (await getCommunityArticles(slug))[0] ?? null;
+    ?? (await getCommunityArticles(locale, slug))[0] ?? null;
 }
 
 export async function getAuthorBySlug(slug: string, locale: Locale = "en") {
