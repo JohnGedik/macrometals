@@ -184,6 +184,9 @@ async function getMarketSeries(symbol: string, interval = "1wk", range = "5y"): 
       points: time !== undefined && quoteSessionsMatch(left, right) ? [{ time, value: 1 }] : [], maxAgeDays: 10 };
   }
 
+  export async function getMarketComparisonSeries(symbol: string): Promise<Series | null> {
+    return getMarketSeries(symbol, "1d", "1y");
+  }
 
 async function getFredSeries(seriesId: keyof typeof fredSeriesDefinitions): Promise<Series | null> {
   if (!getSourceRights("fred", seriesId).allowed) return null;

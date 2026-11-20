@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { Suspense } from "react";
 import { ArticleCard } from "@/components/article-card";
+import { HomeMarketComparison } from "@/components/home-market-comparison";
 import { HomeMacroScores } from "@/components/home-macro-scores";
 import { MacroDataLoading } from "@/components/macro-data-loading";
 import { getArticles } from "@/lib/articles";
@@ -34,6 +35,9 @@ export default async function HomePage() {
       <div className="market-note"><span>{t.strapline}</span><span>{t.englishTurkish}</span></div>
       <Suspense fallback={<MacroDataLoading className="content-width" message={t.loadingScores} />}>
         <HomeMacroScores locale={locale} />
+      </Suspense>
+      <Suspense fallback={<MacroDataLoading className="content-width" message={t.loadingMarketComparison} />}>
+        <HomeMarketComparison locale={locale} />
       </Suspense>
 
       <section className="topic-rail" aria-label={t.followSignal}>

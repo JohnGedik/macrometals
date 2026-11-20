@@ -616,6 +616,69 @@ textarea:focus-visible {
 .home-macro-score-status { display: flex; justify-content: space-between; gap: 8px; margin-top: 9px; color: var(--muted); font-size: 9px; font-weight: 700; text-transform: uppercase; }
 .home-macro-score-track { height: 4px; margin-top: 13px; }
 .home-macro-score-track span { background: var(--score-tone); }
+.home-market-comparison {
+  padding-top: 32px;
+  padding-bottom: 56px;
+}
+.home-market-comparison .section-heading { align-items: end; margin-bottom: 18px; }
+.home-market-comparison-note {
+  max-width: 360px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.5;
+  text-align: right;
+}
+.home-market-comparison-panel {
+  padding: 16px 18px 12px;
+  border: 1px solid var(--line);
+  background: var(--paper-light);
+}
+.home-market-comparison-plot { width: 100%; height: 320px; }
+.home-market-comparison-empty {
+  display: grid;
+  height: 100%;
+  margin: 0;
+  place-items: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+.home-market-comparison-tooltip {
+  display: grid;
+  gap: 5px;
+  padding: 9px 11px;
+  border: 1px solid var(--line);
+  background: var(--paper-light);
+  color: var(--ink-soft);
+  box-shadow: 0 3px 12px rgb(28 41 36 / 12%);
+  font-size: 11px;
+}
+.home-market-comparison-tooltip strong { color: var(--ink); margin-bottom: 2px; }
+.home-market-comparison-tooltip span,
+.home-market-comparison-legend li { display: flex; align-items: center; gap: 7px; }
+.home-market-comparison-tooltip i,
+.home-market-comparison-legend i { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; }
+.home-market-comparison-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 20px;
+  margin: 10px 0 0;
+  padding: 0;
+  border: 0;
+  color: var(--ink-soft);
+  font-size: 11px;
+}
+.home-market-comparison-legend label { display: inline-flex; align-items: center; gap: 7px; cursor: pointer; }
+.home-market-comparison-legend input { margin: 0; accent-color: var(--green); }
+.home-market-comparison-legend i { width: 9px; height: 9px; flex: 0 0 9px; border-radius: 50%; }
+.home-market-comparison-source,
+.home-market-comparison-unavailable {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 10px;
+  line-height: 1.5;
+}
 .home-macro-scores-loading {
   min-height: 250px;
   display: flex;
@@ -3132,6 +3195,11 @@ textarea:focus-visible {
 
   .home-macro-scores { padding-top: 32px; padding-bottom: 34px; }
   .home-macro-scores-note { text-align: left; }
+  .home-market-comparison { padding-top: 28px; padding-bottom: 38px; }
+  .home-market-comparison-note { text-align: left; }
+  .home-market-comparison-panel { padding: 10px 8px; }
+  .home-market-comparison-plot { height: 250px; }
+  .home-market-comparison-legend { gap: 9px 14px; font-size: 10px; }
   .home-macro-score-grid { grid-template-columns: 1fr; }
   .home-macro-scores-loading { min-height: 220px; gap: 24px; }
   .macro-drivers-loading { min-height: 175px; }
