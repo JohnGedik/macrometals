@@ -1,4 +1,22 @@
-# Copper Seasonality by Month
+---
+id: 44444444-4444-4444-8444-444444444444
+slug: copper-growth-electrification
+title: Copper Growth & Electrification
+summary: Explore copper's monthly seasonality and how manufacturing, inventories, and electrification can outweigh calendar patterns.
+coverImage: "https://images.unsplash.com/photo-1610375461246-83df859d849d?auto=format&fit=crop&w=1800&q=85&sat=-70"
+publishedAt: 2026-10-19T09:00:00.000Z
+tags:
+  - Copper
+  - Industry
+  - Inflation
+author:
+  slug: ufuk-Gedikoglu
+  displayName: Dr G
+  bio: Independent macro researcher tracking the signals in precious metals, energy, and money.
+  avatarUrl:
+---
+
+## Copper Seasonality by Month
 
 Unlike gold and silver, copper is primarily an industrial metal. While copper does exhibit seasonal tendencies, seasonal patterns are generally less reliable because economic growth, manufacturing activity, and supply-demand dynamics often have a much greater impact on price performance.
 
