@@ -29,8 +29,8 @@ export function ModelPerformance({
   const number = new Intl.NumberFormat(locale === "tr" ? "tr-TR" : "en-US", {
     maximumFractionDigits: 1,
   });
-  const percent = (value: number | null) => value === null ? "N/A" : `${value > 0 ? "+" : ""}${number.format(value)}%`;
-  const accuracy = (value: number | null) => value === null ? "N/A" : `${number.format(value)}%`;
+  const percent = (value: number | null) => value === null ? "--" : `${value > 0 ? "+" : ""}${number.format(value)}%`;
+  const accuracy = (value: number | null) => value === null ? "--" : `${number.format(value)}%`;
 
   return <section className="model-performance" aria-labelledby={`${id}-performance-title`}>
     <div className="model-performance-heading">
@@ -48,8 +48,8 @@ export function ModelPerformance({
           <strong>{accuracy(metric.accuracy_percentage)}</strong>
         </div>
         <dl>
-          <div><dt>{t.performanceEvaluated}</dt><dd>{metric.total_predictions || "N/A"}</dd></div>
-          <div><dt>{t.performanceCorrect}</dt><dd>{metric.total_predictions ? metric.correct_predictions : "N/A"}</dd></div>
+          <div><dt>{t.performanceEvaluated}</dt><dd>{metric.total_predictions || "--"}</dd></div>
+          <div><dt>{t.performanceCorrect}</dt><dd>{metric.total_predictions ? metric.correct_predictions : "--"}</dd></div>
           <div><dt>{t.performanceAverageReturn}</dt><dd>{percent(metric.average_forward_return)}</dd></div>
           <div><dt>{t.performanceBullishReturn}</dt><dd>{percent(metric.average_return_after_bullish_signals)}</dd></div>
           <div><dt>{t.performanceBearishReturn}</dt><dd>{percent(metric.average_return_after_bearish_signals)}</dd></div>
