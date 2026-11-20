@@ -6,7 +6,11 @@ import { getLocale } from "@/lib/locale";
 import { messages } from "@/lib/i18n";
 
 export async function generateMetadata(): Promise<Metadata> {
-  return { title: messages[(await getLocale())].search.title };
+  return {
+    title: messages[(await getLocale())].search.title,
+    robots: { index: false, follow: true },
+    alternates: { canonical: "/search" },
+  };
 }
 
 export default async function SearchPage({

@@ -10,7 +10,10 @@ import { messages } from "@/lib/i18n";
 export const dynamic = "force-dynamic";
 
 export async function generateMetadata(): Promise<Metadata> {
-  return { title: messages[(await getLocale())].profile.yourProfile };
+  return {
+    title: messages[(await getLocale())].profile.yourProfile,
+    robots: { index: false, follow: false },
+  };
 }
 
 export default async function ProfilePage({

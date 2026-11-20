@@ -4,6 +4,12 @@ import { CommunityNotice } from "@/components/community-controls";
 import { communityCopy } from "@/lib/community-copy";
 import { getLocale } from "@/lib/locale";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "New discussion",
+  robots: { index: false, follow: true },
+};
 
 export default async function NewDiscussionPage({ searchParams }: { searchParams: Promise<{ error?: string }> }) {
   const locale = await getLocale();

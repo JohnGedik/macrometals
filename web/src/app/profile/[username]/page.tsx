@@ -6,6 +6,8 @@ import { getArticles } from "@/lib/articles";
 import { getLocale } from "@/lib/locale";
 import { messages } from "@/lib/i18n";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { JsonLd } from "@/components/json-ld";
+import { absoluteUrl } from "@/lib/seo";
 
 type RouteProps = { params: Promise<{ username: string }> };
 
@@ -21,7 +23,11 @@ async function getPublicProfile(username: string) {
 export async function generateMetadata({ params }: RouteProps): Promise<Metadata> {
   const { username } = await params;
   const profile = await getPublicProfile(username);
-  return profile ? { title: profile.display_name ?? profile.username, description: profile.bio ?? "" } : { title: "Profile not found" };
+  return profile ? {
+    title: profile.display_name ?? profile.username,
+    description: profile.bio ?? "",
+    alternates: { canonical: `/profile/${profile.username}` },
+  } : { title: "Profile not found", robots: { index: false, follow: false } };
 }
 
 export default async function PublicProfilePage({ params }: RouteProps) {
@@ -30,6 +36,17 @@ export default async function PublicProfilePage({ params }: RouteProps) {
   const t = messages[locale].profile;
   const profile = await getPublicProfile(username);
   if (!profile) notFound();
+  const profileJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "ProfilePage",
+    mainEntity: {
+      "@type": "Person",
+      name: profile.display_name ?? profile.username,
+      description: profile.bio,
+      image: profile.avatar_url,
+      url: absoluteUrl(`/profile/${profile.username}`),
+    },
+  };
 
   const articles = (await getArticles(locale)).filter((article) => article.authorId === profile.id);
   const votesReceived = articles.reduce((total, article) => total + (article.upvotes ?? 0) + (article.downvotes ?? 0), 0);
@@ -37,6 +54,7 @@ export default async function PublicProfilePage({ params }: RouteProps) {
 
   return (
     <section className="author-page content-width">
+      <JsonLd value={profileJsonLd} />
       <div className="section-kicker"><span className="eyebrow">{t.publicProfile}</span><span className="kicker-line" /></div>
       <div className="author-profile"><Avatar name={profile.display_name ?? profile.username} imageUrl={profile.avatar_url} size="large" /><div><p className="eyebrow">@{profile.username}</p><h1>{profile.display_name ?? profile.username}</h1><p>{profile.bio}</p></div></div>
       <dl className="community-profile-stats">

@@ -5,10 +5,16 @@ import { getArticles } from "@/lib/articles";
 import { communityCopy } from "@/lib/community-copy";
 import { getLocale } from "@/lib/locale";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { Metadata } from "next";
 
 type OwnedArticle = { id: string; slug: string; title: string; published: boolean };
 type SavedArticle = { article_id: string };
 type ArticleLink = { id: string; slug: string; title: string };
+
+export const metadata: Metadata = {
+  title: "Library",
+  robots: { index: false, follow: false },
+};
 
 export default async function LibraryPage({ searchParams }: { searchParams: Promise<{ error?: string; notice?: string }> }) {
   const locale = await getLocale();

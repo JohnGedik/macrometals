@@ -6,7 +6,11 @@ import { messages } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 
 export async function generateMetadata(): Promise<Metadata> {
-  return { title: messages[(await getLocale())].login.title };
+  return {
+    title: messages[(await getLocale())].login.title,
+    robots: { index: false, follow: true },
+    alternates: { canonical: "/login" },
+  };
 }
 
 export default async function LoginPage({

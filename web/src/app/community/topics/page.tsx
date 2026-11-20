@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { ArticleCard } from "@/components/article-card";
 import { CommunityNotice } from "@/components/community-controls";
 import { getArticles } from "@/lib/articles";
@@ -9,6 +10,15 @@ import { getLocale } from "@/lib/locale";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 const topics = ["gold", "silver", "copper", "oil", "macro"] as const;
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return {
+    title: communityCopy[locale].topicFeeds,
+    description: communityCopy[locale].topicsIntro,
+    alternates: { canonical: "/community/topics" },
+  };
+}
 
 export default async function TopicsPage({ searchParams }: { searchParams: Promise<{ topic?: string; sort?: string; error?: string; notice?: string }> }) {
   const locale = await getLocale();

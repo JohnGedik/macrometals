@@ -7,7 +7,13 @@ import { messages } from "@/lib/i18n";
 
 export async function generateMetadata(): Promise<Metadata> {
   const locale = await getLocale();
-  return { title: messages[locale].community.title };
+  return {
+    title: messages[locale].community.title,
+    description: locale === "tr"
+      ? "Makro piyasalara ilişkin topluluk analizleri, yeni yayınlar ve okuyucu tartışmaları."
+      : "Community analysis, new publishing, and reader discussion about macro markets.",
+    alternates: { canonical: "/community" },
+  };
 }
 
 type Sort = "latest" | "top" | "views" | "trending";

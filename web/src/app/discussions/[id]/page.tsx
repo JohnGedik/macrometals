@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { addDiscussionReplyAction, voteDiscussionAction } from "@/app/community/social-actions";
 import { CommunityNotice, ReportControl } from "@/components/community-controls";
@@ -6,9 +7,26 @@ import { communityCopy } from "@/lib/community-copy";
 import type { Locale } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { JsonLd } from "@/components/json-ld";
+import { absoluteUrl } from "@/lib/seo";
 
 type Reply = { id: string; parent_id: string | null; author_id: string; content: string; created_at: string };
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export async function generateMetadata({ params }: { params: Promise<{ id: string }> }): Promise<Metadata> {
+  const { id } = await params;
+  if (!uuid.test(id)) return { title: "Discussion not found", robots: { index: false, follow: false } };
+  const supabase = await createSupabaseServerClient();
+  const { data } = supabase
+    ? await supabase.from("discussion_posts").select("title, content").eq("id", id).maybeSingle()
+    : { data: null };
+  if (!data) return { title: "Discussion not found", robots: { index: false, follow: false } };
+  return {
+    title: data.title,
+    description: data.content.slice(0, 155),
+    alternates: { canonical: `/discussions/${id}` },
+  };
+}
 
 function ReplyForm({ postId, parentId, locale }: { postId: string; parentId?: string; locale: Locale }) {
   const t = communityCopy[locale];
@@ -83,7 +101,17 @@ export default async function DiscussionPage({ params, searchParams }: {
   const userVote = Number(summary?.user_vote ?? 0);
   const signedIn = !!userResult.data.user;
   const path = `/discussions/${id}`;
+  const discussionJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "DiscussionForumPosting",
+    headline: post.title,
+    text: post.content,
+    datePublished: post.created_at,
+    author: { "@type": "Person", name: authors.get(post.author_id) ?? "Reader" },
+    mainEntityOfPage: absoluteUrl(path),
+  };
   return <article className="community-page content-width community-social">
+    <JsonLd value={discussionJsonLd} />
     <p><Link className="text-link" href="/community/topics">{t.topicFeeds}</Link></p>
     <h1>{post.title}</h1>
     <p className="discussion-meta">{authors.get(post.author_id) ?? "Reader"} · {new Date(post.created_at).toLocaleDateString(locale === "tr" ? "tr-TR" : "en-US")}</p>

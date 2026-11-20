@@ -38,7 +38,7 @@ Understanding oil prices is often one of the fastest ways to understand where th
 
 ---
 
-# Why Is Oil So Important?
+## Why Is Oil So Important?
 
 The modern economy runs on energy.
 
@@ -70,7 +70,7 @@ For this reason, many economists view oil as one of the clearest gauges of globa
 
 ---
 
-# The Relationship Between Oil and Inflation
+## The Relationship Between Oil and Inflation
 
 One of the fastest ways oil impacts the economy is through inflation.
 
@@ -96,7 +96,7 @@ The answer can directly influence interest-rate decisions.
 
 ---
 
-# Distinguishing a Temporary Shock from a Structural Change
+## Distinguishing a Temporary Shock from a Structural Change
 
 One of the most common mistakes investors make is assuming every oil price movement carries the same significance.
 
@@ -134,7 +134,7 @@ The important question is:
 
 ---
 
-# Oil and Central Banks
+## Oil and Central Banks
 
 The relationship between oil markets and central banks is often overlooked.
 
@@ -159,7 +159,7 @@ That is why oil is followed closely not only by energy investors, but also by:
 
 ---
 
-# Oil and the U.S. Dollar
+## Oil and the U.S. Dollar
 
 Oil is primarily priced in U.S. dollars.
 
@@ -185,7 +185,7 @@ This typically occurs when supply disruptions or geopolitical risks dominate mar
 
 ---
 
-# Reading Oil Alongside Gold
+## Reading Oil Alongside Gold
 
 Viewed in isolation, oil only tells part of the story.
 
@@ -221,7 +221,7 @@ They prefer to view it within a broader macro framework.
 
 ---
 
-# Oil and Copper: A Double Signal for Growth
+## Oil and Copper: A Double Signal for Growth
 
 Copper measures confidence in economic growth.
 
@@ -254,7 +254,7 @@ This is why professional investors look beyond oil itself and ask whether other 
 
 ---
 
-# Who Drives the Oil Market?
+## Who Drives the Oil Market?
 
 Oil prices are shaped by a complex interaction of participants.
 
@@ -287,48 +287,7 @@ Events in these regions can quickly reshape market expectations.
 
 ---
 
-# Oil Seasonality
-
-Oil also exhibits seasonal tendencies.
-
-However, seasonality is generally less reliable than in precious metals because geopolitical developments and supply-demand dynamics often dominate short-term price action.
-
-## Historical Seasonal Pattern
-
-| Month | Historical Tendency |
-|---------|---------|
-| January | Strong |
-| February | Neutral |
-| March | Positive |
-| April | Strong |
-| May | Strong |
-| June | Positive |
-| July | Strong |
-| August | Strong |
-| September | Mixed |
-| October | Weak |
-| November | Neutral |
-| December | Positive |
-
-## Strongest Periods
-
-Historically, late spring and summer have often been supportive for oil demand because:
-
-- Travel activity increases.
-- Transportation demand rises.
-- Vacation seasons boost fuel consumption.
-
-These factors can provide a tailwind for prices.
-
-## Weaker Periods
-
-September and October have historically produced more mixed results.
-
-However, major geopolitical developments can easily overwhelm seasonal trends.
-
----
-
-# The Bigger Picture
+## The Bigger Picture
 
 Oil is far more than an energy commodity.
 
@@ -361,3 +320,7 @@ Because oil is not merely a reflection of energy markets.
 It is one of the clearest mirrors of the global economy.
 
 And often, it is among the first markets to detect major economic shifts long before they appear in official statistics.
+
+## Keep the larger signal in view
+
+Read the focused [Oil Seasonality by Month guide](/articles/oil-seasonality-by-month) with the [Oil macro dashboard](/tag/oil), [gold's response to macro stress](/articles/gold-and-the-price-of-patience), and [copper's growth signal](/articles/copper-growth-electrification).

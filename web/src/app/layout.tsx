@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import { DM_Sans, DM_Serif_Display } from "next/font/google";
 import { SiteFooter } from "@/components/site-footer";
 import { SiteHeader } from "@/components/site-header";
+import { JsonLd } from "@/components/json-ld";
 import { getLocale } from "@/lib/locale";
+import { absoluteUrl, getSiteUrl } from "@/lib/seo";
 import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 
@@ -22,7 +24,7 @@ export async function generateMetadata(): Promise<Metadata> {
   const isTurkish = locale === "tr";
 
   return {
-    metadataBase: new URL(process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"),
+    metadataBase: new URL(getSiteUrl()),
     title: {
       default: isTurkish ? "Macro Metals Monitor | Piyasanın sinyallerini okuyun" : "Macro Metals Monitor | Read the signal",
       template: "%s | Macro Metals Monitor",
@@ -45,10 +47,31 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export default async function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const locale = await getLocale();
+  const organization = {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "Organization",
+        "@id": absoluteUrl("/#organization"),
+        name: "Macro Metals Monitor",
+        url: absoluteUrl("/"),
+        logo: absoluteUrl("/macro-metals-compass.svg"),
+      },
+      {
+        "@type": "WebSite",
+        "@id": absoluteUrl("/#website"),
+        url: absoluteUrl("/"),
+        name: "Macro Metals Monitor",
+        publisher: { "@id": absoluteUrl("/#organization") },
+        inLanguage: locale,
+      },
+    ],
+  };
 
   return (
     <html lang={locale} className={`${sans.variable} ${display.variable}`}>
       <body>
+        <JsonLd value={organization} />
         <SiteHeader />
         <main>{children}</main>
         <SiteFooter />

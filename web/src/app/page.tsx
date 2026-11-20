@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { Metadata } from "next";
 import { ArrowDownRight, ArrowUpRight } from "lucide-react";
 import { Suspense } from "react";
 import { ArticleCard } from "@/components/article-card";
@@ -9,6 +10,19 @@ import { getTagLabel, messages } from "@/lib/i18n";
 import { getLocale } from "@/lib/locale";
 
 const topics = ["Gold", "Silver", "Copper", "Oil", "Inflation", "Debt", "Dollar", "Geopolitics"];
+
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = await getLocale();
+  return {
+    title: locale === "tr"
+      ? "Macro Metals Monitor | Piyasaların sinyallerini okuyun"
+      : "Macro Metals Monitor | Read the signal",
+    description: locale === "tr"
+      ? "Altın, gümüş, bakır ve petrolü gerçek göstergeler ve kaynaklarla birlikte değerlendiren bağımsız makro analiz."
+      : "Independent macro analysis of gold, silver, copper, and oil through market indicators and verified sources.",
+    alternates: { canonical: "/" },
+  };
+}
 
 export default async function HomePage() {
   const locale = await getLocale();

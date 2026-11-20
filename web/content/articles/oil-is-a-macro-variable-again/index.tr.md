@@ -38,7 +38,7 @@ Petrol fiyatlarını anlamak, çoğu zaman ekonominin yönünü anlamanın en h�
 
 ---
 
-# Petrol Neden Bu Kadar Önemlidir?
+## Petrol Neden Bu Kadar Önemlidir?
 
 Modern ekonomi enerji üzerine kuruludur.
 
@@ -70,7 +70,7 @@ Bu yüzden petrol, birçok ekonomist tarafından küresel ekonominin nabzı olar
 
 ---
 
-# Petrol ve Enflasyon Arasındaki İlişki
+## Petrol ve Enflasyon Arasındaki İlişki
 
 Petrol fiyatlarının ekonomi üzerindeki en hızlı etkilerinden biri enflasyon kanalı üzerinden gerçekleşir.
 
@@ -98,7 +98,7 @@ Bu sorunun cevabı faiz politikalarını doğrudan etkileyebilir.
 
 ---
 
-# Geçici Şok ile Kalıcı Değişimi Ayırmak
+## Geçici Şok ile Kalıcı Değişimi Ayırmak
 
 Petrol piyasasında yatırımcıların en sık yaptığı hatalardan biri, her fiyat hareketine aynı anlamı yüklemektir.
 
@@ -132,7 +132,7 @@ o zaman petrol fiyatlarındaki yükseliş geçici değil, uzun vadeli bir dönü
 
 ---
 
-# Petrol ve Merkez Bankaları
+## Petrol ve Merkez Bankaları
 
 Petrol piyasası ile merkez bankaları arasındaki ilişki çoğu zaman gözden kaçar.
 
@@ -159,7 +159,7 @@ yakından takip ettiği bir göstergedir.
 
 ---
 
-# Petrol ve Dolar İlişkisi
+## Petrol ve Dolar İlişkisi
 
 Petrol küresel piyasalarda büyük ölçüde ABD doları üzerinden fiyatlanır.
 
@@ -185,7 +185,7 @@ Bu durum genellikle arz şoklarının veya jeopolitik risklerin baskın olduğu 
 
 ---
 
-# Petrolü Altınla Birlikte Okumak
+## Petrolü Altınla Birlikte Okumak
 
 Petrol tek başına değerlendirildiğinde hikâyenin yalnızca bir kısmını anlatır.
 
@@ -225,7 +225,7 @@ Bu nedenle profesyonel yatırımcılar petrolü tek başına değil, diğer makr
 
 ---
 
-# Petrol ve Bakır: Büyümenin Çifte Göstergesi
+## Petrol ve Bakır: Büyümenin Çifte Göstergesi
 
 Bakır ekonomik büyümeye duyulan güveni ölçer.
 
@@ -260,7 +260,7 @@ Ancak aynı zamanda ekonomik büyüme beklentileri zayıflıyor olabilir.
 
 ---
 
-# Petrol Piyasasını Kimler Yönlendiriyor?
+## Petrol Piyasasını Kimler Yönlendiriyor?
 
 Petrol piyasası çok sayıda aktörün etkileşimi sonucunda şekillenir.
 
@@ -293,48 +293,7 @@ petrol fiyatlarının yönünü değiştirebilecek stratejik bölgelerdir.
 
 ---
 
-# Petrolün Mevsimselliği
-
-Petrol piyasasında da belirli mevsimsel eğilimler görülür.
-
-Ancak petrolde mevsimsellik, altın ve gümüşe kıyasla daha zayıf bir etkendir çünkü jeopolitik gelişmeler ve arz-talep dengesi çoğu zaman baskın hale gelir.
-
-## Tarihsel Eğilim
-
-| Ay | Eğilim |
-|------|------|
-| Ocak | Güçlü |
-| Şubat | Nötr |
-| Mart | Pozitif |
-| Nisan | Güçlü |
-| Mayıs | Güçlü |
-| Haziran | Pozitif |
-| Temmuz | Güçlü |
-| Ağustos | Güçlü |
-| Eylül | Karışık |
-| Ekim | Zayıf |
-| Kasım | Nötr |
-| Aralık | Pozitif |
-
-## En Güçlü Dönemler
-
-Özellikle ilkbahar sonu ve yaz aylarında:
-
-- Seyahat faaliyetleri artar.
-- Ulaşım talebi yükselir.
-- Tatil sezonu yakıt tüketimini artırır.
-
-Bu durum petrol talebini destekleyebilir.
-
-## Daha Zayıf Dönemler
-
-Tarihsel olarak Eylül ve Ekim ayları daha karışık sonuçlar üretmiştir.
-
-Ancak petrol piyasasında jeopolitik olaylar çoğu zaman mevsimselliğin önüne geçebilir.
-
----
-
-# Büyük Resim
+## Büyük Resim
 
 Petrol yalnızca enerji fiyatlarının göstergesi değildir.
 
@@ -363,3 +322,7 @@ Bu soruların cevapları çoğu zaman petrol fiyatının kendisinden daha değer
 Çünkü petrol yalnızca enerji piyasasının değil, küresel ekonominin de aynasıdır.
 
 Ve çoğu zaman ekonomide yaklaşan değişimleri, resmi verilerden çok daha önce fark eden piyasalardan biridir.
+
+## Daha geniş sinyali birlikte izleyin
+
+[Aylara göre petrol mevsimselliği rehberini](/articles/oil-seasonality-by-month), [petrol makro dashboardunu](/tag/oil) ve [bakırın büyüme sinyalini](/articles/copper-growth-electrification) birlikte inceleyin.

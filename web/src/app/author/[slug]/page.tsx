@@ -5,6 +5,8 @@ import { Avatar } from "@/components/avatar";
 import { getAuthorBySlug } from "@/lib/articles";
 import { getLocale } from "@/lib/locale";
 import { messages } from "@/lib/i18n";
+import { JsonLd } from "@/components/json-ld";
+import { absoluteUrl } from "@/lib/seo";
 
 type RouteProps = { params: Promise<{ slug: string }> };
 
@@ -13,7 +15,11 @@ export async function generateMetadata({ params }: RouteProps): Promise<Metadata
   const locale = await getLocale();
   const profile = await getAuthorBySlug(slug, locale);
   return profile
-    ? { title: profile.author.displayName, description: profile.author.bio }
+    ? {
+        title: profile.author.displayName,
+        description: profile.author.bio,
+        alternates: { canonical: `/author/${slug}` },
+      }
     : { title: "Author not found" };
 }
 
@@ -23,9 +29,21 @@ export default async function AuthorPage({ params }: RouteProps) {
   const t = messages[locale].author;
   const profile = await getAuthorBySlug(slug, locale);
   if (!profile) notFound();
+  const personJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "ProfilePage",
+    mainEntity: {
+      "@type": "Person",
+      name: profile.author.displayName,
+      description: profile.author.bio,
+      image: profile.author.avatarUrl,
+      url: absoluteUrl(`/author/${slug}`),
+    },
+  };
 
   return (
     <section className="author-page content-width">
+      <JsonLd value={personJsonLd} />
       <div className="section-kicker"><span className="eyebrow">{t.contributors}</span><span className="kicker-line" /></div>
       <div className="author-profile"><Avatar name={profile.author.displayName} imageUrl={profile.author.avatarUrl} size="large" /><div><p className="eyebrow">{t.author}</p><h1>{profile.author.displayName}</h1><p>{profile.author.bio}</p></div></div>
       <div className="section-heading"><div><p className="eyebrow">{t.fromDesk}</p><h2>{t.articlesBy.replace("{name}", profile.author.displayName)}</h2></div></div>

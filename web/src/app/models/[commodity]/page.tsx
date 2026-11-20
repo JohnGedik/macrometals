@@ -7,8 +7,14 @@ import { getLocale } from "@/lib/locale";
 import { isMetalModelCommodity, validModelWeights, type SavedMetalModel } from "@/lib/metal-model";
 import { metalModelCopy } from "@/lib/metal-model-copy";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
+import type { Metadata } from "next";
 
 type Props = { params: Promise<{ commodity: string }> };
+
+export const metadata: Metadata = {
+  title: "Metal model editor",
+  robots: { index: false, follow: false },
+};
 
 export default async function MetalModelPage({ params }: Props) {
   const { commodity } = await params;

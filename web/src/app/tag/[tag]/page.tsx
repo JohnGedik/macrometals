@@ -13,6 +13,8 @@ import { MacroDataLoading } from "@/components/macro-data-loading";
 import { isMetalModelCommodity } from "@/lib/metal-model";
 import { getDashboardModel, type DashboardModel } from "@/lib/metal-model-default";
 import { getDashboardModelPerformance } from "@/lib/model-performance-dashboard";
+import { JsonLd } from "@/components/json-ld";
+import { absoluteUrl } from "@/lib/seo";
 
 type RouteProps = { params: Promise<{ tag: string }> };
 type IndicatorLoad = ReturnType<typeof loadCommodityIndicators>;
@@ -59,7 +61,14 @@ export async function generateMetadata({ params }: RouteProps): Promise<Metadata
   const locale = await getLocale();
   const config = getCommodityConfiguration(decodeURIComponent(tag).toLowerCase());
   const label = config?.name[locale] ?? getTagLabel(`${title[0]?.toUpperCase()}${title.slice(1)}`, locale);
-  return { title: `${label} ${locale === "tr" ? "analizleri" : "analysis"}` };
+  const description = locale === "tr"
+    ? `${label} fiyat hareketleri, makroekonomik göstergeler, kaynak verileri ve ilgili analizleri.`
+    : `${label} prices, macro indicators, source data, and related market analysis.`;
+  return {
+    title: `${label} ${locale === "tr" ? "analizleri" : "analysis"}`,
+    description,
+    alternates: { canonical: `/tag/${encodeURIComponent(decodeURIComponent(tag).toLowerCase())}` },
+  };
 }
 
 export default async function TagPage({ params }: RouteProps) {
@@ -90,9 +99,19 @@ export default async function TagPage({ params }: RouteProps) {
     ? getDashboardModelPerformance(config.commodity as "gold" | "silver" | "copper" | "oil", defaultModel)
     : Promise.resolve({ system: [], personal: {} });
   const macro = messages[locale].macro;
+  const pageUrl = absoluteUrl(`/tag/${config.commodity}`);
+  const breadcrumbJsonLd = {
+    "@context": "https://schema.org",
+    "@type": "BreadcrumbList",
+    itemListElement: [
+      { "@type": "ListItem", position: 1, name: messages[locale].header.latest, item: absoluteUrl("/") },
+      { "@type": "ListItem", position: 2, name: config.name[locale], item: pageUrl },
+    ],
+  };
 
   return (
     <section className="listing-page content-width commodity-page">
+      <JsonLd value={breadcrumbJsonLd} />
       <Suspense fallback={<><h1 id="macro-indicators-title">{config.dashboardTitle[locale]}</h1><p role="status">{macro.loadingMarket}</p></>}>
         <CommodityMarketHeader data={header} name={config.name[locale]} title={config.dashboardTitle[locale]} locale={locale} />
       </Suspense>
