@@ -5,6 +5,9 @@ import { messages, type Locale } from "@/lib/i18n";
 import { classifyScoreStatus, type CommodityConfiguration } from "@/lib/commodity-score";
 import { previewMetalModel, type ModelWeights } from "@/lib/metal-model";
 import { metalModelCopy } from "@/lib/metal-model-copy";
+import { ModelPerformance } from "@/components/model-performance";
+import type { ModelPerformanceDashboard } from "@/lib/model-performance-dashboard";
+import type { ReactNode } from "react";
 
 type Props = {
   commodity: string;
@@ -13,9 +16,11 @@ type Props = {
   factors: { id: string; score: number | null }[];
   models: { id: string; name: string; weights: ModelWeights }[];
   defaultId: string;
+  performance: ModelPerformanceDashboard["personal"];
+  performanceAction?: ReactNode;
 };
 
-export function PersonalModelScore({ commodity, locale, rules, factors, models, defaultId }: Props) {
+export function PersonalModelScore({ commodity, locale, rules, factors, models, defaultId, performance, performanceAction }: Props) {
   const [selectedId, setSelectedId] = useState(defaultId);
   const copy = metalModelCopy[locale];
   const t = messages[locale].macro;
@@ -51,5 +56,7 @@ export function PersonalModelScore({ commodity, locale, rules, factors, models, 
       aria-valuenow={score}><span style={{ width: `${score}%` }} /></div>}
     <p>{copy.coverage.replace("{coverage}", String(coverage)).replace("{excluded}", String(100 - coverage))}</p>
     <p>{score === null ? copy.noScore : copy.basis}</p>
+    <ModelPerformance metrics={performance[selected.id] ?? []} locale={locale} id={`${commodity}-${selected.id}`}
+      action={performanceAction} />
   </>;
 }

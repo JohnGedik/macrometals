@@ -12,6 +12,7 @@ import { CommodityHeader } from "@/components/commodity-header";
 import { MacroDataLoading } from "@/components/macro-data-loading";
 import { isMetalModelCommodity } from "@/lib/metal-model";
 import { getDashboardModel, type DashboardModel } from "@/lib/metal-model-default";
+import { getDashboardModelPerformance } from "@/lib/model-performance-dashboard";
 
 type RouteProps = { params: Promise<{ tag: string }> };
 type IndicatorLoad = ReturnType<typeof loadCommodityIndicators>;
@@ -23,11 +24,13 @@ async function CommodityMarketHeader({ data, name, title, locale }: {
   return <CommodityHeader name={name} title={title} data={await data} labels={messages[locale].commodityHeader} locale={locale} />;
 }
 
-async function CommodityScore({ model, defaultModel, locale }: {
+async function CommodityScore({ model, defaultModel, locale, performance }: {
   model: IndicatorLoad["model"]; defaultModel: Promise<DashboardModel> | null; locale: Locale;
+  performance: ReturnType<typeof getDashboardModelPerformance>;
 }) {
-  const result = await model;
-  return <MacroScorePanel config={result.config} cards={result.cards} locale={locale} macroScore={result.summary} dashboardModel={defaultModel} />;
+  const [result, performanceData] = await Promise.all([model, performance]);
+  return <MacroScorePanel config={result.config} cards={result.cards} locale={locale} macroScore={result.summary}
+    dashboardModel={defaultModel} performance={performanceData} />;
 }
 
 async function CommodityContext({ context, locale }: { context: IndicatorLoad["context"]; locale: Locale }) {
@@ -83,6 +86,9 @@ export default async function TagPage({ params }: RouteProps) {
   const defaultModel = isMetalModelCommodity(config.commodity)
     ? getDashboardModel(config.commodity, config.indicators.map(({ id }) => id))
     : null;
+  const performance = defaultModel
+    ? getDashboardModelPerformance(config.commodity as "gold" | "silver" | "copper" | "oil", defaultModel)
+    : Promise.resolve({ system: [], personal: {} });
   const macro = messages[locale].macro;
 
   return (
@@ -92,7 +98,7 @@ export default async function TagPage({ params }: RouteProps) {
       </Suspense>
       <section className="macro-indicators macro-gold" aria-labelledby="macro-indicators-title">
         <Suspense fallback={<p role="status">{macro.loadingScore}</p>}>
-          <CommodityScore model={model} defaultModel={defaultModel} locale={locale} />
+          <CommodityScore model={model} defaultModel={defaultModel} locale={locale} performance={performance} />
         </Suspense>
         <Suspense fallback={<MacroDataLoading className="macro-drivers-loading" message={macro.loadingMarket} />}>
           <CommodityIndicators model={model} context={context} locale={locale} />

@@ -15,7 +15,7 @@ Open http://localhost:3000. The journal and seeded sample articles render withou
 ## Supabase setup
 
 1. Copy `web/.env.example` to `web/.env.local` and set `NEXT_PUBLIC_SITE_URL`, `NEXT_PUBLIC_SUPABASE_URL`, and `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` from the Supabase project settings.
-2. Apply [`web/supabase/migrations/20261107000000_initial_schema.sql`](web/supabase/migrations/20261107000000_initial_schema.sql), [`web/supabase/migrations/20261111000000_community_publishing.sql`](web/supabase/migrations/20261111000000_community_publishing.sql), [`web/supabase/migrations/20261115010000_community_library_discussions.sql`](web/supabase/migrations/20261115010000_community_library_discussions.sql), and [`web/supabase/migrations/20261116000000_ensure_own_profile.sql`](web/supabase/migrations/20261116000000_ensure_own_profile.sql), in order, in the Supabase SQL editor or with the Supabase CLI.
+2. Apply the files in [`web/supabase/migrations/`](web/supabase/migrations/), in timestamp order, in the Supabase SQL editor or with the Supabase CLI.
 3. In Supabase Authentication, enable Google and email providers. Email login uses a passwordless sign-in link. Add `http://localhost:3000/auth/callback` and the deployed callback URL to the allowed redirect URLs.
 4. Configure the Google OAuth client ID and secret in Supabase, and set its callback URL to the Supabase-provided Google provider callback.
 
@@ -87,7 +87,17 @@ The Configured Model panel on each commodity dashboard shows the system score al
 
 Commodity dashboards start the chart, score, cross-market, article, and personal model requests together and stream those sections as they are ready. The system score does not wait for the other sections. The scoring and cross-market sections share a single FRED real-yield request per dashboard load; this does not add a shared cache or change data freshness.
 
-Models and defaults are owner-scoped by Supabase RLS. A model has a stable UUID, a definition version for the indicator set, and a revision that advances on save. A future observation/evaluation table can store model ID, revision, exact weights, its scoring-rule version, and observation references independently of the editable model. No evaluation history, backtesting, or performance metrics are collected or exposed.
+Models and defaults are owner-scoped by Supabase RLS. A model has a stable UUID, a definition version for the indicator set, and a revision that advances on save. The daily performance pipeline mirrors active personal models and the four site defaults into a private canonical registry while preserving snapshots independently from later edits or deletion.
+
+### Prospective model performance
+
+The authenticated `/api/cron/model-performance` job runs daily at 23:30 UTC on Vercel. It reloads the current indicator inputs, records one append-only snapshot per active system or personal model, stores the exact score inputs and per-indicator contributions, and evaluates matured snapshots at 7, 30, 90, and 180 days. Historical backfills and estimated historical performance are intentionally not performed.
+
+Snapshot rows are unique by model and UTC calendar date and cannot be updated or deleted. A retry on the same day leaves the original snapshot unchanged. Scores or prices that are unavailable remain `null`; they are never replaced with sample values. Performance is calculated only from future prices captured by the daily process, and missing exact-date observations remain unevaluated.
+
+Version 1 uses simple directional accuracy. Bullish and strong-bullish signals require a positive return; bearish and strong-bearish signals require a negative return; neutral returns must fall within the database-configured band, initially -2% to +2%. Aggregate counts, accuracy percentages, and average returns are available in the service-role-only `model_performance_metrics` view.
+
+Configure the server-only `SUPABASE_SECRET_KEY` and `CRON_SECRET` in the deployment. Do not expose either key through `NEXT_PUBLIC_` variables. The source-permission flags listed above still govern which indicator feeds and market prices are eligible; enabling this job does not grant data-use rights.
 
 ### WGC gold data
 

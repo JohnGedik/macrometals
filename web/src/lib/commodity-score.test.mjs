@@ -36,6 +36,11 @@ const aliases = registerHooks({
 });
 const { calculateCommodityChanges, commodityChangesInput, rankCommodityChanges } = await import("./commodity-changes.ts");
 const { scoreCommodity } = await import("./commodity-score.ts");
+const {
+  calculateSnapshotScore,
+  classifyPerformanceSignal,
+  predictionIsCorrect,
+} = await import("./model-performance-rules.ts");
 const { commodityConfigurations, getCommodityConfiguration } = await import("./commodity-config.ts");
 const { getMacroIndicators, getCommodityHeaderData, loadCommodityIndicators } = await import("./indicators.ts");
 const { countActiveIndicators, generateMacroSummary } = await import("./macro-summary.ts");
@@ -96,6 +101,56 @@ test("Metal Model preview rescales eligible weights and never scores excluded fa
   assert.deepEqual(previewMetalModel({ a: 20, b: 20, c: 60 }, factors), { score: 50, coverage: 40 });
   assert.deepEqual(previewMetalModel({ a: 30, b: 10, c: 60 }, factors), { score: 75, coverage: 40 });
   assert.deepEqual(previewMetalModel({ a: 0, b: 0, c: 100 }, factors), { score: null, coverage: 0 });
+});
+
+test("performance signals and directional correctness use the Version 1 rules", () => {
+  assert.equal(classifyPerformanceSignal(90), "strong_bullish");
+  assert.equal(classifyPerformanceSignal(82), "bullish");
+  assert.equal(classifyPerformanceSignal(60), "bullish");
+  assert.equal(classifyPerformanceSignal(50), "neutral");
+  assert.equal(classifyPerformanceSignal(30), "bearish");
+  assert.equal(classifyPerformanceSignal(11), "bearish");
+  assert.equal(classifyPerformanceSignal(10), "strong_bearish");
+  assert.equal(predictionIsCorrect("bullish", 4.2), true);
+  assert.equal(predictionIsCorrect("bullish", -3.1), false);
+  assert.equal(predictionIsCorrect("bearish", -0.1), true);
+  assert.equal(predictionIsCorrect("neutral", 1.1), true);
+  assert.equal(predictionIsCorrect("neutral", 2), true);
+  assert.equal(predictionIsCorrect("neutral", -2.01), false);
+});
+
+test("snapshot scoring preserves exact eligible indicator inputs and normalized contributions", () => {
+  const indicators = [
+    { id: "positive", current: 4.2, score: 70, weight: 50, weightedScore: 35, contribution: 10, status: "bullish", previous: 1, change: 1, exclusionReason: null },
+    { id: "negative", current: -2, score: 30, weight: 25, weightedScore: 7.5, contribution: -5, status: "bearish", previous: 1, change: -1, exclusionReason: null },
+    { id: "excluded", current: 12, score: null, weight: 25, weightedScore: 0, contribution: 0, status: "unavailable", previous: null, change: null, exclusionReason: "unavailable" },
+  ];
+  const snapshot = calculateSnapshotScore(indicators, { positive: 60, negative: 30, excluded: 10 }, 50, false);
+  assert.equal(snapshot.score, 57);
+  assert.deepEqual(snapshot.contributions, [
+    {
+      indicator_name: "positive",
+      indicator_weight: 60,
+      indicator_value: 4.2,
+      normalized_indicator_score: 70,
+      contribution_to_model_score: 20 * (60 / 90),
+    },
+    {
+      indicator_name: "negative",
+      indicator_weight: 30,
+      indicator_value: -2,
+      normalized_indicator_score: 30,
+      contribution_to_model_score: -20 * (30 / 90),
+    },
+    {
+      indicator_name: "excluded",
+      indicator_weight: 10,
+      indicator_value: 12,
+      normalized_indicator_score: null,
+      contribution_to_model_score: 0,
+    },
+  ]);
+  assert.deepEqual(calculateSnapshotScore(indicators, { positive: 60, negative: 30, excluded: 10 }, 50, true).score, null);
 });
 
 test("Dashboard Metal Model only loads the signed-in user's commodity default and uses its saved weights", async () => {

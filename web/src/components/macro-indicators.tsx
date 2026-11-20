@@ -13,6 +13,8 @@ import type { DashboardModel } from "@/lib/metal-model-default";
 import { metalModelCopy } from "@/lib/metal-model-copy";
 import { Suspense, type ReactNode } from "react";
 import { PersonalModelScore } from "@/components/personal-model-score";
+import { ModelPerformance } from "@/components/model-performance";
+import type { ModelPerformanceDashboard } from "@/lib/model-performance-dashboard";
 
 type MacroProps = {
   cards: IndicatorCardData[];
@@ -21,24 +23,31 @@ type MacroProps = {
   macroScore: MacroScoreSummary;
 };
 
-async function PersonalModel({ model, cards, config, locale }: Omit<MacroProps, "macroScore"> & { model: Promise<DashboardModel> }) {
+async function PersonalModel({ model, cards, config, locale, performance }: Omit<MacroProps, "macroScore"> & {
+  model: Promise<DashboardModel>; performance: ModelPerformanceDashboard["personal"];
+}) {
   const dashboardModel = await model;
   const copy = metalModelCopy[locale];
+  const editLink = <Link href={`/models/${config.commodity}`} prefetch={false}>{copy.edit}</Link>;
   if (dashboardModel.status !== "ready") {
     return <>
       <h3 id={`${config.commodity}-personal-model-title`}>{copy.personalModel}</h3>
       <p>{dashboardModel.status === "signed-out" ? copy.dashboardSignIn
         : dashboardModel.status === "no-default" ? copy.dashboardNoDefault : copy.unavailableStorage}</p>
+      <ModelPerformance metrics={[]} locale={locale} id={`${config.commodity}-personal-unavailable`} action={editLink} />
     </>;
   }
   const factors = config.indicators.map(({ id }) => ({
     id, score: cards.find((card) => card.id === id)?.factorScore ?? null,
   }));
   return <PersonalModelScore commodity={config.commodity} locale={locale} rules={config.scoreRules}
-    factors={factors} models={dashboardModel.models} defaultId={dashboardModel.defaultId} />;
+    factors={factors} models={dashboardModel.models} defaultId={dashboardModel.defaultId} performance={performance}
+    performanceAction={editLink} />;
 }
 
-export function MacroScorePanel({ cards, config, locale, macroScore, dashboardModel }: MacroProps & { dashboardModel: Promise<DashboardModel> | null }) {
+export function MacroScorePanel({ cards, config, locale, macroScore, dashboardModel, performance }: MacroProps & {
+  dashboardModel: Promise<DashboardModel> | null; performance: ModelPerformanceDashboard;
+}) {
   const t = messages[locale].macro;
   const modelCopy = metalModelCopy[locale];
   const scoreTitle = config.scoreTitle[locale];
@@ -66,15 +75,15 @@ export function MacroScorePanel({ cards, config, locale, macroScore, dashboardMo
                   {macroScore.release.missingRequired.length > 0 && <p>{t.missingCriticalFactors}: {macroScore.release.missingRequired.join(" · ")}</p>}
                 </>}
               </div>}
+              <ModelPerformance metrics={performance.system} locale={locale} id={`${config.commodity}-system`} />
             </div>
             {dashboardModel && <section className="macro-model-personal" aria-labelledby={`${config.commodity}-personal-model-title`}>
               <Suspense fallback={<>
                 <h3 id={`${config.commodity}-personal-model-title`}>{modelCopy.personalModel}</h3>
                 <p role="status">{t.loadingPersonalModel}</p>
               </>}>
-                <PersonalModel model={dashboardModel} cards={cards} config={config} locale={locale} />
+                <PersonalModel model={dashboardModel} cards={cards} config={config} locale={locale} performance={performance.personal} />
               </Suspense>
-              <Link href={`/models/${config.commodity}`} prefetch={false}>{modelCopy.edit}</Link>
             </section>}
           </div>
           <p className="gold-macro-disclosure">{macroScore.disclosure}</p>
