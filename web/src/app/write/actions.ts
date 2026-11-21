@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
 import { ensureProfile } from "@/lib/ensure-profile";
+import { readArticleTranslations } from "@/lib/article-translations";
 
 const allowedLanguages = new Set(["en", "tr"]);
 const tagSlug = (value: string) => value.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -21,19 +22,7 @@ export async function saveArticleAction(formData: FormData) {
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { error: "auth" as const };
 
-  const english = {
-    language: "en" as const,
-    title: String(formData.get("title_en") ?? "").trim(),
-    summary: String(formData.get("summary_en") ?? "").trim(),
-    content: String(formData.get("content_markdown_en") ?? "").trim(),
-  };
-  const turkish = {
-    language: "tr" as const,
-    title: String(formData.get("title_tr") ?? "").trim(),
-    summary: String(formData.get("summary_tr") ?? "").trim(),
-    content: String(formData.get("content_markdown_tr") ?? "").trim(),
-  };
-  const translations = [english, turkish].filter((translation) => translation.title || translation.summary || translation.content);
+  const { english, turkish, translations } = readArticleTranslations(formData);
   const title = english.title;
   const summary = english.summary;
   const content = english.content;
@@ -45,14 +34,25 @@ export async function saveArticleAction(formData: FormData) {
   const published = intent === "publish";
 
   if (!title || title.length > 140 || !summary || summary.length > 300 || !content || content.length > 100000
-    || translations.some((translation) => !translation.title || translation.title.length > 140 || !translation.summary
-      || translation.summary.length > 300 || !translation.content || translation.content.length > 100000
+    || translations.some((translation) => translation.title.length > 140
+      || translation.summary.length > 300 || translation.content.length > 100000
       || !allowedLanguages.has(translation.language)) || tags.some((tag) => tag.length > 40)) {
     return { error: "invalid" as const };
   }
   if (image && (!/^https?:\/\//i.test(image) || image.length > 2048)) return { error: "invalid" as const };
 
   if (!await ensureProfile(supabase, user.id)) return { error: "profile" as const };
+
+  let publishedAt: string | null = null;
+  if (articleId) {
+    const { data: existingArticle, error } = await supabase.from("articles")
+      .select("published_at").eq("id", articleId).eq("author_id", user.id).maybeSingle();
+    if (error || !existingArticle) {
+      console.error("Could not load article for update", error?.code);
+      return { error: "save" as const };
+    }
+    publishedAt = existingArticle.published_at;
+  }
 
   let slug = articleSlug(title);
   const suffix = user.id.slice(0, 6);
@@ -86,7 +86,7 @@ export async function saveArticleAction(formData: FormData) {
     language: "en",
     category_id: category.id,
     published,
-    published_at: published ? new Date().toISOString() : null,
+    published_at: published ? publishedAt ?? new Date().toISOString() : null,
   };
 
   let savedId = articleId;
@@ -120,7 +120,7 @@ export async function saveArticleAction(formData: FormData) {
     console.error("Could not save article translations", translationsError.code);
     return { error: "save" as const };
   }
-  if (!turkish.title) {
+  if (!turkish.title && !turkish.summary && !turkish.content) {
     const { error: deleteTranslationError } = await supabase.from("article_translations")
       .delete().eq("article_id", savedId).eq("language", "tr");
     if (deleteTranslationError) {

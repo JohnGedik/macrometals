@@ -12,6 +12,7 @@ const categorySlugs = ["gold", "silver", "oil", "copper", "macro", "inflation", 
 
 export type ArticleEditorValues = {
   id?: string;
+  published?: boolean;
   translations?: Partial<Record<Locale, {
     title: string;
     summary: string;
@@ -67,10 +68,6 @@ export function ArticleEditor({
     <div className="community-editor-wrap">
       <p className="muted-copy">{t.description}</p>
       {error && <p className="form-alert error" role="alert">{error === "invalid" ? t.invalid : t.saveFailed}</p>}
-      {submitError && <p className="form-alert error" role="alert">
-        {submitError === "invalid" ? t.invalid : submitError === "auth" ? t.signInAgain : submitError === "profile" ? t.profileFailed : t.saveFailed}
-        {submitError === "auth" && <> <a href="/login" target="_blank" rel="noopener noreferrer">{t.signInLink}</a></>}
-      </p>}
       {saved && <p className="form-alert success" role="status">{t.saved}</p>}
       <form className="community-editor" method="post" onSubmit={submitArticle}>
         <input type="hidden" name="article_id" value={values.id ?? ""} />
@@ -96,11 +93,15 @@ export function ArticleEditor({
         <input id="article-tags" name="tags" defaultValue={values.tags?.join(", ")} placeholder={t.tagsHint} />
         <label htmlFor="article-image">{t.image}</label>
         <input id="article-image" name="featured_image" type="url" defaultValue={values.image} placeholder="https://" />
+        {submitError && <p className="form-alert error" role="alert">
+          {submitError === "invalid" ? t.invalid : submitError === "auth" ? t.signInAgain : submitError === "profile" ? t.profileFailed : t.saveFailed}
+          {submitError === "auth" && <> <a href="/login" target="_blank" rel="noopener noreferrer">{t.signInLink}</a></>}
+        </p>}
         <div className="community-editor-actions">
           {values.id && <button className="button-secondary" type="submit" formAction={deleteArticleAction} formNoValidate disabled={pending}>{t.delete}</button>}
           <span />
           <button className="button-secondary" type="submit" name="intent" value="draft" disabled={pending}>{pending ? t.saving : t.saveDraft}</button>
-          <button className="button-primary" type="submit" name="intent" value="publish" disabled={pending}>{t.publish} <span>→</span></button>
+          <button className="button-primary" type="submit" name="intent" value="publish" disabled={pending}>{values.published ? t.saveArticle : t.publish} <span>→</span></button>
         </div>
       </form>
     </div>

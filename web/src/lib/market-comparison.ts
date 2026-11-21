@@ -9,6 +9,8 @@ export const marketComparisonAssets = [
 
 export type MarketComparisonAssetId = (typeof marketComparisonAssets)[number]["id"];
 export type MarketComparisonSeriesPoint = { time: number; value: number };
+export type MarketComparisonRange = "10y" | "5y" | "1y" | "6m" | "1m";
+export const marketComparisonRanges: readonly MarketComparisonRange[] = ["10y", "5y", "1y", "6m", "1m"];
 export type MarketComparisonPoint = {
   time: number;
   gold: number;
@@ -18,6 +20,38 @@ export type MarketComparisonPoint = {
   nasdaq: number;
   sp500: number;
 };
+
+export function marketComparisonForRange(
+  points: readonly MarketComparisonPoint[],
+  range: MarketComparisonRange,
+): MarketComparisonPoint[] {
+  const end = points.at(-1);
+  if (!end) return [];
+
+  const months = { "10y": 120, "5y": 60, "1y": 12, "6m": 6, "1m": 1 }[range];
+  const endDate = new Date(end.time * 1000);
+  const day = endDate.getUTCDate();
+  endDate.setUTCDate(1);
+  endDate.setUTCMonth(endDate.getUTCMonth() - months);
+  const lastDay = new Date(Date.UTC(endDate.getUTCFullYear(), endDate.getUTCMonth() + 1, 0)).getUTCDate();
+  endDate.setUTCDate(Math.min(day, lastDay));
+  const start = endDate.getTime() / 1000;
+  const firstIndex = points.findIndex((point) => point.time >= start);
+  if (firstIndex < 0 || firstIndex === points.length - 1 || points[firstIndex].time > start + 7 * 86400) return [];
+
+  const baseline = points[firstIndex];
+  if (marketComparisonAssets.some(({ id }) => !Number.isFinite(baseline[id]) || baseline[id] <= 0)) return [];
+
+  return points.slice(firstIndex).map((point) => ({
+    time: point.time,
+    gold: point.gold / baseline.gold * 100,
+    silver: point.silver / baseline.silver * 100,
+    copper: point.copper / baseline.copper * 100,
+    oil: point.oil / baseline.oil * 100,
+    nasdaq: point.nasdaq / baseline.nasdaq * 100,
+    sp500: point.sp500 / baseline.sp500 * 100,
+  }));
+}
 
 export function normalizeMarketComparison(
   seriesByAsset: Record<MarketComparisonAssetId, readonly MarketComparisonSeriesPoint[] | null>,

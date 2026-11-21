@@ -31,11 +31,11 @@ const getCachedMarketComparison = unstable_cache(
       sp500: seriesByAsset.sp500?.points ?? null,
     });
     if (!points.length) {
-      console.error("Home market comparison could not align the requested one-year series");
+      console.error("Home market comparison could not align the requested ten-year series");
     }
     return { points, observedAt: points.at(-1)?.time ?? null };
   },
-  ["home-market-comparison-v1"],
+  ["home-market-comparison-v2"],
   { revalidate: 3600 },
 );
 
@@ -48,26 +48,21 @@ export async function HomeMarketComparison({ locale }: { locale: Locale }) {
 
   return (
     <section className="home-market-comparison content-width" aria-labelledby="home-market-comparison-title">
-      <div className="section-heading">
-        <div>
-          <p className="eyebrow">{t.macroSnapshot}</p>
-          <h2 id="home-market-comparison-title">{t.marketComparisonTitle}</h2>
-        </div>
-        <p className="home-market-comparison-note">{t.marketComparisonNote}</p>
-      </div>
-      {comparison.points.length ? (
-        <HomeMarketComparisonChart
-          points={comparison.points}
-          locale={locale}
-          labels={t.marketComparisonAssets}
-          observedAt={comparison.observedAt}
-          sourceNote={t.marketComparisonSource}
-          noSelectionLabel={t.marketComparisonNoSelection}
-          seriesLabel={t.marketComparisonSeriesLabel}
-        />
-      ) : (
-        <p className="home-market-comparison-unavailable" role="status">{t.marketComparisonUnavailable}</p>
-      )}
+      <HomeMarketComparisonChart
+        points={comparison.points}
+        locale={locale}
+        labels={t.marketComparisonAssets}
+        observedAt={comparison.observedAt}
+        sourceNote={t.marketComparisonSource}
+        noSelectionLabel={t.marketComparisonNoSelection}
+        seriesLabel={t.marketComparisonSeriesLabel}
+        titles={t.marketComparisonTitles}
+        ranges={t.marketComparisonRanges}
+        rangeLabel={t.marketComparisonRangeLabel}
+        unavailableLabel={t.marketComparisonUnavailable}
+        eyebrow={t.macroSnapshot}
+        note={t.marketComparisonNote}
+      />
     </section>
   );
 }

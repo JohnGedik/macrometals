@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { marketComparisonAssets, normalizeMarketComparison } from "./market-comparison.ts";
+import { marketComparisonAssets, marketComparisonForRange, normalizeMarketComparison } from "./market-comparison.ts";
 
 function makeSeries(values) {
   return values.map(([time, value]) => ({ time, value }));
@@ -42,4 +42,49 @@ test("returns no comparison when an asset is missing or has no positive starting
     silver: valid, copper: valid, oil: valid, nasdaq: valid, sp500: valid,
   };
   assert.deepEqual(normalizeMarketComparison(zeroGold), []);
+});
+
+function comparisonPoint(date, value) {
+  return {
+    time: Date.parse(`${date}T00:00:00Z`) / 1000,
+    gold: value,
+    silver: value * 2,
+    copper: value * 3,
+    oil: value * 4,
+    nasdaq: value * 5,
+    sp500: value * 6,
+  };
+}
+
+test("each requested period starts at its calendar boundary and rebases all markets", () => {
+  const points = [
+    comparisonPoint("2016-11-21", 100),
+    comparisonPoint("2021-11-21", 150),
+    comparisonPoint("2025-11-21", 200),
+    comparisonPoint("2026-05-21", 250),
+    comparisonPoint("2026-10-21", 300),
+    comparisonPoint("2026-11-21", 330),
+  ];
+  for (const [range, date, expectedEnd] of [
+    ["10y", "2016-11-21", 330],
+    ["5y", "2021-11-21", 220],
+    ["1y", "2025-11-21", 165],
+    ["6m", "2026-05-21", 132],
+    ["1m", "2026-10-21", 110],
+  ]) {
+    const result = marketComparisonForRange(points, range);
+    assert.equal(result[0].time, Date.parse(`${date}T00:00:00Z`) / 1000);
+    for (const { id } of marketComparisonAssets) {
+      assert.equal(result[0][id], 100);
+      assert.ok(Math.abs(result.at(-1)[id] - expectedEnd) < 1e-10);
+    }
+  }
+});
+
+test("range boundaries clamp month ends and do not claim unavailable history", () => {
+  const points = [comparisonPoint("2024-02-29", 100), comparisonPoint("2024-03-31", 110)];
+  assert.equal(marketComparisonForRange(points, "1m")[0].time, points[0].time);
+  assert.deepEqual(marketComparisonForRange(points, "1y"), []);
+  const lateStart = [comparisonPoint("2023-04-10", 100), comparisonPoint("2024-03-31", 110)];
+  assert.deepEqual(marketComparisonForRange(lateStart, "1y"), []);
 });

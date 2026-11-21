@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { CartesianGrid, Line, LineChart, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import {
   marketComparisonAssets,
+  marketComparisonForRange,
+  marketComparisonRanges,
   type MarketComparisonAssetId,
   type MarketComparisonPoint,
+  type MarketComparisonRange,
 } from "@/lib/market-comparison";
 import type { Locale } from "@/lib/i18n";
 
@@ -17,6 +20,12 @@ export function HomeMarketComparisonChart({
   sourceNote,
   noSelectionLabel,
   seriesLabel,
+  titles,
+  ranges,
+  rangeLabel,
+  unavailableLabel,
+  eyebrow,
+  note,
 }: {
   points: MarketComparisonPoint[];
   locale: Locale;
@@ -25,40 +34,69 @@ export function HomeMarketComparisonChart({
   sourceNote: string;
   noSelectionLabel: string;
   seriesLabel: string;
+  titles: Record<MarketComparisonRange, string>;
+  ranges: Record<MarketComparisonRange, string>;
+  rangeLabel: string;
+  unavailableLabel: string;
+  eyebrow: string;
+  note: string;
 }) {
   const [visibleAssets, setVisibleAssets] = useState<Set<MarketComparisonAssetId>>(
-    () => new Set(marketComparisonAssets.map(({ id }) => id)),
+    () => new Set(["gold", "sp500"]),
   );
+  const [range, setRange] = useState<MarketComparisonRange>("5y");
+  const rangePoints = useMemo(() => marketComparisonForRange(points, range), [points, range]);
   const localeCode = locale === "tr" ? "tr-TR" : "en-US";
   const numberFormat = new Intl.NumberFormat(localeCode, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
   const dateFormat = new Intl.DateTimeFormat(localeCode, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-  const monthFormat = new Intl.DateTimeFormat(localeCode, { month: "short", year: "2-digit", timeZone: "UTC" });
-  const quarterlyTicks = points.reduce<number[]>((ticks, point) => {
-    const date = new Date(point.time * 1000);
-    if (date.getUTCMonth() % 3 === 0 && !ticks.some((tick) => {
-      const tickDate = new Date(tick * 1000);
-      return tickDate.getUTCMonth() === date.getUTCMonth() && tickDate.getUTCFullYear() === date.getUTCFullYear();
-    })) ticks.push(point.time);
-    return ticks;
-  }, []);
+  const axisFormat = new Intl.DateTimeFormat(localeCode, range === "1m"
+    ? { month: "short", day: "numeric", timeZone: "UTC" }
+    : range === "5y" || range === "10y"
+      ? { year: "numeric", timeZone: "UTC" }
+      : { month: "short", year: "2-digit", timeZone: "UTC" });
+  const tickCount = Math.min(6, rangePoints.length);
+  const ticks = Array.from({ length: tickCount }, (_, index) =>
+    rangePoints[Math.floor(index * (rangePoints.length - 1) / (tickCount - 1))].time);
   const updatedLabel = observedAt === null
     ? ""
     : new Intl.DateTimeFormat(localeCode, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })
       .format(observedAt * 1000);
 
   return (
+    <>
+    <div className="section-heading">
+      <div>
+        <p className="eyebrow">{eyebrow}</p>
+        <h2 id="home-market-comparison-title">{titles[range]}</h2>
+      </div>
+      <p className="home-market-comparison-note">{note}</p>
+    </div>
+    {points.length ? (
     <div className="home-market-comparison-panel">
-      <div className="home-market-comparison-plot" role="img" aria-label={sourceNote}>
-        {visibleAssets.size ? (
+      <div className="home-market-comparison-ranges" role="group" aria-label={rangeLabel}>
+        {marketComparisonRanges.map((option) => (
+          <button key={option} type="button" aria-pressed={range === option} onClick={() => setRange(option)}>
+            {ranges[option]}
+          </button>
+        ))}
+      </div>
+      <div
+        className="home-market-comparison-plot"
+        role={rangePoints.length && visibleAssets.size ? "img" : undefined}
+        aria-label={rangePoints.length && visibleAssets.size ? titles[range] : undefined}
+      >
+        {!rangePoints.length ? (
+          <p className="home-market-comparison-empty" role="status">{unavailableLabel}</p>
+        ) : visibleAssets.size ? (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={points} margin={{ top: 8, right: 12, bottom: 3, left: 3 }}>
+            <LineChart data={rangePoints} margin={{ top: 8, right: 12, bottom: 3, left: 3 }}>
               <CartesianGrid stroke="#333333" strokeOpacity={0.22} vertical horizontal />
               <XAxis
                 dataKey="time"
                 type="number"
                 domain={["dataMin", "dataMax"]}
-                ticks={quarterlyTicks}
-                tickFormatter={(time: number) => monthFormat.format(new Date(time * 1000))}
+                ticks={ticks}
+                tickFormatter={(time: number) => axisFormat.format(new Date(time * 1000))}
                 tick={{ fill: "#707970", fontSize: 11 }}
                 tickLine={false}
                 axisLine={{ stroke: "#a7aaa1" }}
@@ -138,5 +176,7 @@ export function HomeMarketComparisonChart({
         {sourceNote}{updatedLabel ? ` · ${locale === "tr" ? "Son gözlem" : "Latest observation"}: ${updatedLabel} UTC` : ""}
       </p>
     </div>
+    ) : <p className="home-market-comparison-unavailable" role="status">{unavailableLabel}</p>}
+    </>
   );
 }

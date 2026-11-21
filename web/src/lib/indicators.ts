@@ -185,7 +185,7 @@ async function getMarketSeries(symbol: string, interval = "1wk", range = "5y"): 
   }
 
   export async function getMarketComparisonSeries(symbol: string): Promise<Series | null> {
-    return getMarketSeries(symbol, "1d", "1y");
+    return getMarketSeries(symbol, "1d", "10y");
   }
 
 async function getFredSeries(seriesId: keyof typeof fredSeriesDefinitions): Promise<Series | null> {
