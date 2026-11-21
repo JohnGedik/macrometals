@@ -18,8 +18,7 @@ const getCachedMarketComparison = unstable_cache(
 
     const unavailable = results.filter(({ series }) => !series).map(({ id }) => id);
     if (unavailable.length) {
-      console.error("Home market comparison data unavailable", { assets: unavailable });
-      return { points: [], observedAt: null };
+      throw new Error(`Home market comparison data unavailable: ${unavailable.join(", ")}`);
     }
 
     const points = normalizeMarketComparison({
@@ -31,20 +30,29 @@ const getCachedMarketComparison = unstable_cache(
       sp500: seriesByAsset.sp500?.points ?? null,
     });
     if (!points.length) {
-      console.error("Home market comparison could not align the requested ten-year series");
+      throw new Error("Home market comparison could not align the requested ten-year series");
     }
     return { points, observedAt: points.at(-1)?.time ?? null };
   },
-  ["home-market-comparison-v2"],
+  ["home-market-comparison-v3"],
   { revalidate: 3600 },
 );
 
 export async function HomeMarketComparison({ locale }: { locale: Locale }) {
   const rights = getSourceRights("yahoo");
   const t = messages[locale].home;
-  const comparison = rights.allowed
-    ? await getCachedMarketComparison()
-    : { points: [], observedAt: null };
+  let comparison: { points: ReturnType<typeof normalizeMarketComparison>; observedAt: number | null } = {
+    points: [], observedAt: null,
+  };
+  if (rights.allowed) {
+    try {
+      comparison = await getCachedMarketComparison();
+    } catch (error) {
+      console.error("Home market comparison failed", error instanceof Error ? error.message : "Unknown error");
+    }
+  } else {
+    console.error("Home market comparison unavailable: Yahoo access or distribution permission is not enabled");
+  }
 
   return (
     <section className="home-market-comparison content-width" aria-labelledby="home-market-comparison-title">

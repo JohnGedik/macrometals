@@ -126,7 +126,7 @@ function previousCloseForQuote(series: Series) {
   return null;
 }
 
-async function getMarketSeries(symbol: string, interval = "1wk", range = "5y"): Promise<Series | null> {
+async function getMarketSeries(symbol: string, interval = "1wk", range = "5y", reportErrors = false): Promise<Series | null> {
   if (!getSourceRights("yahoo").allowed) return null;
   try {
     const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=${interval}`;
@@ -135,7 +135,10 @@ async function getMarketSeries(symbol: string, interval = "1wk", range = "5y"): 
       cache: "no-store",
       signal: AbortSignal.timeout(6000),
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      if (reportErrors) console.error("Market comparison request failed", { symbol, status: response.status });
+      return null;
+    }
 
     const payload = (await response.json()) as MarketResponse;
     const result = payload.chart?.result?.[0];
@@ -155,10 +158,16 @@ async function getMarketSeries(symbol: string, interval = "1wk", range = "5y"): 
       ? livePrice
       : points.at(-1)?.value;
 
+    if ((!finite(current) || !points.length) && reportErrors) {
+      console.error("Market comparison response has no usable data", { symbol });
+    }
     return finite(current) && points.length ? { current, points,
       currentTime: finite(meta?.regularMarketTime) ? meta.regularMarketTime : undefined,
       exchangeTimezoneName: meta?.exchangeTimezoneName, hasLiveQuote, highs, lows } : null;
-  } catch {
+  } catch (error) {
+    if (reportErrors) {
+      console.error("Market comparison request failed", { symbol, error: error instanceof Error ? error.name : "Unknown error" });
+    }
     return null;
   }
 }
@@ -185,7 +194,7 @@ async function getMarketSeries(symbol: string, interval = "1wk", range = "5y"): 
   }
 
   export async function getMarketComparisonSeries(symbol: string): Promise<Series | null> {
-    return getMarketSeries(symbol, "1d", "10y");
+    return getMarketSeries(symbol, "1d", "10y", true);
   }
 
 async function getFredSeries(seriesId: keyof typeof fredSeriesDefinitions): Promise<Series | null> {
