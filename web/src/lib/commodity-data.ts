@@ -48,6 +48,13 @@ const sources: Record<ScoreSource, SourceDefinition> = {
   "eia-oil-spare-capacity": { source: "EIA STEO - OPEC surplus crude oil production capacity (annual average historical estimates)", url: spareCapacityUrl, seriesId: spareCapacitySeriesId, provider: "eia", frequency: "annual", measurement: "rate", normalizedUnit: "million barrels/day", maxLagMonths: 16, geography: "OPEC", aggregation: "annual-average" },
 };
 
+export function commoditySourceRightsKey(config: CommodityConfiguration): string {
+  return Object.values(config.scoreSources ?? {}).map((sourceId) => {
+    const source = sources[sourceId];
+    return `${sourceId}:${getSourceRights(source.provider, source.seriesId).allowed ? "1" : "0"}`;
+  }).sort().join(",");
+}
+
 export function hydrateCommodityObservations(config: CommodityConfiguration, feeds: Partial<Record<ScoreSource, readonly Observation[] | null>>, checkedAt = Date.now() / 1000,
   evidence: Partial<Record<ScoreSource, Pick<IndicatorDataHealth, "archive" | "release">>> = {}): CommodityConfiguration {
   return {

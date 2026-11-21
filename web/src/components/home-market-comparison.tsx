@@ -35,7 +35,7 @@ const getCachedMarketComparison = unstable_cache(
     return { points, observedAt: points.at(-1)?.time ?? null };
   },
   ["home-market-comparison-v3"],
-  { revalidate: 3600 },
+  { revalidate: 900 },
 );
 
 export async function HomeMarketComparison({ locale }: { locale: Locale }) {

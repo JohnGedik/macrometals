@@ -20,6 +20,8 @@ For each permission, record:
 
 `Pending` means no permission is recorded and the relevant code gate must remain off. `Policy documented` is limited to the exact public-domain terms summarized; it does not clear protected third-party content or constitute legal review.
 
+The owner reports email approvals covering a 15-minute server-side cache of the four commodity models' derived scores and indicator histories, including FRED and CFTC inputs. This narrowly supersedes the no-cache statements below for that shared model snapshot only; it does not authorize caching raw responses, archival, other uses, or bypassing individual source permissions. FRED and CFTC requests remain `no-store` on cache misses.
+
 | Record ID | Provider / data | Activity and scope | Evidence reference | Status | Runtime mapping / next action |
 | --- | --- | --- | --- | --- | --- |
 | YAHOO-AUTOMATION | Yahoo Finance chart endpoint | Automated retrieval and public display of dashboard symbols, per owner-reported written permission | Owner-reported Yahoo approval email, 2026-11-14; Yahoo Terms of Service, Section 2(d)(ix); see [rights matrix](DATA_AUDIT.md#candidate-provider-rights-evidence) | Permission confirmed (owner-reported; scope not independently reviewed) | Set `YAHOO_FINANCE_AUTOMATED_ACCESS_CONFIRMED=true` only in deployments covered by the approval; keep `MARKET_DATA_PUBLIC_DISTRIBUTION_CONFIRMED=true` as separately approved. |

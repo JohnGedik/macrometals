@@ -42,9 +42,9 @@ const {
   predictionIsCorrect,
 } = await import("./model-performance-rules.ts");
 const { commodityConfigurations, getCommodityConfiguration } = await import("./commodity-config.ts");
-const { getMacroIndicators, getCommodityHeaderData, loadCommodityIndicators } = await import("./indicators.ts");
+const { getMacroIndicators, getCommodityHeaderData, loadCommodityIndicators, presentCommodityModel } = await import("./indicators.ts");
 const { countActiveIndicators, generateMacroSummary } = await import("./macro-summary.ts");
-const { hydrateCommodityObservations } = await import("./commodity-data.ts");
+const { commoditySourceRightsKey, hydrateCommodityObservations } = await import("./commodity-data.ts");
 const { availableObservation, parseFredObservations, fredSeriesDefinitions, monthlyPeriodIsRecent, annualPeriodIsRecent, periodComparison } = await import("./observation-data.ts");
 const { parseSilverIndustrialTable, parseSilverSolarTable, parseSilverMineTable, parseSilverEtpTable, silverIndustrialObservations } = await import("./silver-industrial-parser.ts");
 const { silverIndustrialFeed, silverSolarFeed, silverMineFeed, silverEtpFeed } = await import("./silver-industrial-observations.ts");
@@ -73,6 +73,19 @@ modelClientAlias.deregister();
 aliases.deregister();
 
 const researchPolicy = { mode: "research", minimumCoverage: 0, requiredIndicators: [], approvedIndicators: [] };
+
+test("commodity cache rights key changes when an input's permission changes", () => {
+  const previous = process.env.FRED_DTWEXBGS_PUBLIC_USE_CONFIRMED;
+  try {
+    process.env.FRED_DTWEXBGS_PUBLIC_USE_CONFIRMED = "true";
+    const allowed = commoditySourceRightsKey(commodityConfigurations.gold);
+    process.env.FRED_DTWEXBGS_PUBLIC_USE_CONFIRMED = "false";
+    assert.notEqual(commoditySourceRightsKey(commodityConfigurations.gold), allowed);
+  } finally {
+    if (previous === undefined) delete process.env.FRED_DTWEXBGS_PUBLIC_USE_CONFIRMED;
+    else process.env.FRED_DTWEXBGS_PUBLIC_USE_CONFIRMED = previous;
+  }
+});
 
 test("Metal Model edits preserve the exact 100% total and requested weight across all four dashboards", () => {
   for (const config of Object.values(commodityConfigurations)) {
@@ -362,6 +375,13 @@ test("Copper publishes only its existing FRED factors with disclosed partial cov
       .every((card) => card.dataHealth.status === "fresh" && card.scoreExclusion === null));
     assert.ok(dashboard.cards.filter((card) => !["dxy", "real-rates"].includes(card.id))
       .every((card) => card.value === "—" && card.factorScore === null && card.chart.points.length === 0));
+    const restoredConfig = JSON.parse(JSON.stringify(dashboard.config));
+    for (const locale of ["en", "tr"]) {
+      const original = presentCommodityModel(dashboard.config, locale);
+      const restored = presentCommodityModel(restoredConfig, locale);
+      assert.deepEqual(restored.summary, original.summary);
+      assert.equal(JSON.stringify(restored.cards), JSON.stringify(original.cards));
+    }
     process.env.FRED_DFII10_PUBLIC_USE_CONFIRMED = "false";
     const partial = await getMacroIndicators(config, "en");
     assert.equal(partial.summary.coverage, 10);

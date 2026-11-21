@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { MetalModelEditor } from "@/components/metal-model-editor";
 import { getCommodityConfiguration } from "@/lib/commodity-config";
-import { getMacroIndicators } from "@/lib/indicators";
+import { getCachedCommodityModel } from "@/lib/commodity-model-cache";
 import { getLocale } from "@/lib/locale";
 import { isMetalModelCommodity, validModelWeights, type SavedMetalModel } from "@/lib/metal-model";
 import { metalModelCopy } from "@/lib/metal-model-copy";
@@ -47,7 +47,7 @@ export default async function MetalModelPage({ params }: Props) {
       console.error("Could not load metal models", errorCode ?? defaultResult.error?.code ?? "unsupported definition");
       content = <p role="alert">{t.unavailableStorage}</p>;
     } else {
-      const { cards } = await getMacroIndicators({ ...config, contextProvider: undefined }, locale);
+      const { cards } = await getCachedCommodityModel(commodity, locale);
       const factors = config.indicators.map(({ id, name }) => ({
         id, name: name[locale], score: cards.find((card) => card.id === id)?.factorScore ?? null,
       }));

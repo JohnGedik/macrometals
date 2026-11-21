@@ -543,20 +543,22 @@ function makeCard(
   };
 }
 
-export function loadCommodityIndicators(config: CommodityConfiguration, locale: Locale) {
-  const requestedSources = new Set(Object.values(config.scoreSources ?? {}));
-  let realYields: Promise<Series | null> | undefined;
-  const loadRealYields = () => realYields ??= getRealYieldSeries();
-  const present = (card: IndicatorCardData) => {
-    const research = config.scoringPolicy?.mode === "research";
-    const labeled = { ...card, commodityName: config.name[locale],
-      priceCorrelation: research ? config.priceRelationships?.[card.id] : undefined };
-    return research ? labeled : hideUnverifiedSampleCard(labeled, locale);
-  };
-  const model = loadMacroScore(config, locale, requestedSources, loadRealYields).then((result) => ({
-    ...result, cards: result.cards.map(present),
-  }));
-  const context = (async () => {
+function presentCommodityCard(card: IndicatorCardData, config: CommodityConfiguration, locale: Locale) {
+  const research = config.scoringPolicy?.mode === "research";
+  const labeled = { ...card, commodityName: config.name[locale],
+    priceCorrelation: research ? config.priceRelationships?.[card.id] : undefined };
+  return research ? labeled : hideUnverifiedSampleCard(labeled, locale);
+}
+
+export function presentCommodityModel(config: CommodityConfiguration, locale: Locale) {
+  const result = macroScoreCards(locale, config);
+  return { ...result, config, cards: result.cards.map((card) => presentCommodityCard(card, config, locale)) };
+}
+
+function commodityContext(config: CommodityConfiguration, locale: Locale,
+  requestedSources: ReadonlySet<NonNullable<CommodityConfiguration["scoreSources"]>[string]>,
+  loadRealYields: typeof getRealYieldSeries) {
+  return (async () => {
     if (!config.contextProvider) return { cards: [], source: config.source[locale] };
     const result = await getContextIndicators(config.contextProvider, locale, loadRealYields);
     const contextSources: Record<string, "dxy" | "real-yields"> = { "live-dxy": "dxy", "oil-dxy": "dxy", "live-real-rates": "real-yields" };
@@ -564,9 +566,25 @@ export function loadCommodityIndicators(config: CommodityConfiguration, locale: 
     const cards = result.cards.filter((card) => !requestedSources.has(contextSources[card.id]) && !macroIds.has(card.id));
     return {
       source: result.source,
-      cards: cards.map((card) => present({ ...card, group: "context", dataHealth: card.dataHealth ?? contextDataHealth(card, config.commodity) })),
+      cards: cards.map((card) => presentCommodityCard({ ...card, group: "context", dataHealth: card.dataHealth ?? contextDataHealth(card, config.commodity) }, config, locale)),
     };
   })();
+}
+
+export function loadCommodityContext(config: CommodityConfiguration, locale: Locale) {
+  return commodityContext(config, locale, new Set(Object.values(config.scoreSources ?? {})), getRealYieldSeries);
+}
+
+export function loadCommodityModel(config: CommodityConfiguration, locale: Locale) {
+  return loadMacroScore(config, locale, new Set(Object.values(config.scoreSources ?? {})), getRealYieldSeries);
+}
+
+export function loadCommodityIndicators(config: CommodityConfiguration, locale: Locale) {
+  const requestedSources = new Set(Object.values(config.scoreSources ?? {}));
+  let realYields: Promise<Series | null> | undefined;
+  const loadRealYields = () => realYields ??= getRealYieldSeries();
+  const model = loadMacroScore(config, locale, requestedSources, loadRealYields);
+  const context = commodityContext(config, locale, requestedSources, loadRealYields);
   return { model, context };
 }
 
@@ -630,7 +648,7 @@ async function loadMacroScore(config: CommodityConfiguration, locale: Locale,
     gpr: gpr?.points ?? null,
   }, checkedAt,
     { "real-yields": realYields ?? {}, m2: m2 ?? {}, "breakeven-5y": breakeven ?? {}, "breakeven-10y": silverBreakeven ?? {} });
-  return { ...macroScoreCards(locale, resolvedConfig), config: resolvedConfig };
+  return presentCommodityModel(resolvedConfig, locale);
 }
 
 function contextDataHealth(card: IndicatorCardData, commodity: string): IndicatorDataHealth {

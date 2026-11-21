@@ -5,7 +5,8 @@ import { ArticleCard } from "@/components/article-card";
 import { getArticles } from "@/lib/articles";
 import { getLocale } from "@/lib/locale";
 import { getTagLabel, messages, type Locale } from "@/lib/i18n";
-import { getCommodityHeaderData, loadCommodityIndicators } from "@/lib/indicators";
+import { getCommodityHeaderData, loadCommodityContext } from "@/lib/indicators";
+import { getCachedCommodityModel } from "@/lib/commodity-model-cache";
 import { getCommodityConfiguration } from "@/lib/commodity-config";
 import { IndicatorGroup, MacroIndicators, MacroScorePanel } from "@/components/macro-indicators";
 import { CommodityHeader } from "@/components/commodity-header";
@@ -17,7 +18,10 @@ import { JsonLd } from "@/components/json-ld";
 import { absoluteUrl } from "@/lib/seo";
 
 type RouteProps = { params: Promise<{ tag: string }> };
-type IndicatorLoad = ReturnType<typeof loadCommodityIndicators>;
+type IndicatorLoad = {
+  model: ReturnType<typeof getCachedCommodityModel>;
+  context: ReturnType<typeof loadCommodityContext>;
+};
 type Articles = Awaited<ReturnType<typeof getArticles>>;
 
 async function CommodityMarketHeader({ data, name, title, locale }: {
@@ -31,8 +35,14 @@ async function CommodityScore({ model, defaultModel, locale, performance }: {
   performance: ReturnType<typeof getDashboardModelPerformance>;
 }) {
   const [result, performanceData] = await Promise.all([model, performance]);
-  return <MacroScorePanel config={result.config} cards={result.cards} locale={locale} macroScore={result.summary}
-    dashboardModel={defaultModel} performance={performanceData} />;
+  const updatedAt = new Intl.DateTimeFormat(locale === "tr" ? "tr-TR" : "en-US", {
+    month: "short", day: "numeric", hour: "numeric", minute: "2-digit", timeZone: "UTC",
+  }).format(result.calculatedAt);
+  return <>
+    <MacroScorePanel config={result.config} cards={result.cards} locale={locale} macroScore={result.summary}
+      dashboardModel={defaultModel} performance={performanceData} />
+    <p className="macro-refresh">{messages[locale].home.scoresUpdated.replace("{time}", updatedAt)}</p>
+  </>;
 }
 
 async function CommodityContext({ context, locale }: { context: IndicatorLoad["context"]; locale: Locale }) {
@@ -90,7 +100,8 @@ export default async function TagPage({ params }: RouteProps) {
     </section>;
   }
 
-  const { model, context } = loadCommodityIndicators(config, locale);
+  const model = getCachedCommodityModel(config.commodity, locale);
+  const context = loadCommodityContext(config, locale);
   const header = getCommodityHeaderData(config);
   const defaultModel = isMetalModelCommodity(config.commodity)
     ? getDashboardModel(config.commodity, config.indicators.map(({ id }) => id))

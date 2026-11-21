@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 import { getCommodityConfiguration } from "@/lib/commodity-config";
-import { loadCommodityIndicators } from "@/lib/indicators";
+import { getCachedCommodityModel } from "@/lib/commodity-model-cache";
 import { messages, type Locale } from "@/lib/i18n";
 
 const commodities = ["gold", "silver", "copper", "oil"] as const;
@@ -10,10 +10,10 @@ async function getMacroScores(locale: Locale) {
   const scores = await Promise.all(commodities.map(async (commodity) => {
     const config = getCommodityConfiguration(commodity);
     if (!config) throw new Error(`Missing commodity configuration: ${commodity}`);
-    const result = await loadCommodityIndicators({ ...config, contextProvider: undefined }, locale).model;
-    return { commodity, config, summary: result.summary };
+    const result = await getCachedCommodityModel(commodity, locale);
+    return { commodity, config, summary: result.summary, calculatedAt: result.calculatedAt };
   }));
-  return { scores, calculatedAt: Date.now() };
+  return { scores, calculatedAt: Math.min(...scores.map((score) => score.calculatedAt)) };
 }
 
 export async function HomeMacroScores({ locale }: { locale: Locale }) {
@@ -36,7 +36,7 @@ export async function HomeMacroScores({ locale }: { locale: Locale }) {
       </div>
       <div className="home-macro-score-grid">
         {scores.map(({ commodity, config, summary }) => (
-          <Link className={`home-macro-score-card impact-${summary.status}`} href={`/tag/${commodity}`} key={commodity}>
+          <Link className={`home-macro-score-card impact-${summary.status}`} href={`/tag/${commodity}`} key={commodity} prefetch={false}>
             <div className="home-macro-score-heading">
               <h3>{config.name[locale]}</h3>
               <ArrowUpRight size={17} aria-hidden="true" />
