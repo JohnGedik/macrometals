@@ -36,7 +36,7 @@ export const messages = {
       macroScores: "Macro Scores",
       macroScoresNote: "Weighted macro signals · 0–100",
       loadingScores: "Reading the metals market.",
-      scoresUpdated: "Updated {time} UTC · cached for up to 6 hours",
+      scoresUpdated: "Calculated {time} UTC",
       marketComparisonTitles: {
         "10y": "Ten-year market comparison",
         "5y": "Five-year market comparison",
@@ -636,7 +636,7 @@ export const messages = {
       macroScores: "Makro Puanlar",
       macroScoresNote: "Ağırlıklı makro sinyaller · 0–100",
       loadingScores: "Metal Piyasalarını okuyoruz.",
-      scoresUpdated: "Güncelleme: {time} UTC · en fazla 6 saat önbellekte",
+      scoresUpdated: "Hesaplanma: {time} UTC",
       marketComparisonTitles: {
         "10y": "On yıllık piyasa karşılaştırması",
         "5y": "Beş yıllık piyasa karşılaştırması",
