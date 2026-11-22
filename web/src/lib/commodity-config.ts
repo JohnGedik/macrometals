@@ -132,11 +132,11 @@ export const commodityConfigurations = {
     scoringPolicy: {
       mode: "sourced-only", minimumCoverage: 0,
       requiredIndicators: [],
-      approvedIndicators: ["industrial-demand", "china-pmi", "mine-supply", "dxy", "real-rates"],
+      approvedIndicators: ["industrial-demand", "china-pmi", "mine-supply", "dxy", "real-rates", "cot-positioning"],
     },
     scoreSources: {
       "industrial-demand": "copper-industrial-demand", "china-pmi": "china-pmi",
-      "mine-supply": "copper-mine-supply", dxy: "dxy", "real-rates": "real-yields",
+      "mine-supply": "copper-mine-supply", "cot-positioning": "cftc-copper-cot", dxy: "dxy", "real-rates": "real-yields",
     },
     summaryTone: { en: "Manufacturing, electrification and supply availability frame this outlook.", tr: "Bu görünüm imalat, elektrifikasyon ve arz koşulları çerçevesinde değerlendirilir." },
     market: { symbol: "HG=F", unit: "lb" },
@@ -144,7 +144,10 @@ export const commodityConfigurations = {
     scoreTitle: localized((locale) => messages[locale].macro.copperMacroScoreTitle),
     disclosure: localized((locale) => messages[locale].macro.copperMacroSampleNotice),
     source: localized((locale) => messages[locale].macro.copperSource),
-    refresh: localized((locale) => messages[locale].macro.refresh),
+    refresh: {
+      en: "ICSG and NBS feeds refresh independently after one hour; successful observations may be reused from process memory for up to six hours. Model snapshots refresh every 15 minutes. FRED and CFTC requests bypass caching.",
+      tr: "ICSG ve NBS verileri bir saat sonra bağımsız olarak yenilenir; başarılı gözlemler işlem belleğinden en fazla altı saat boyunca yeniden kullanılabilir. Model anlık görüntüleri 15 dakikada bir yenilenir. FRED ve CFTC istekleri önbelleğe alınmaz.",
+    },
     methodology: localized((locale) => {
       const t = messages[locale].macro;
       return { title: t.copperMethodTitle, description: t.copperMethodology, formulas: [t.copperRatioFormula, t.copperTrendFormula], sources: t.copperDataSources };
@@ -160,12 +163,13 @@ export const commodityConfigurations = {
     commodity: "oil", name: { en: "Oil", tr: "Petrol" }, contextProvider: "oil",
     scoringPolicy: {
       mode: "sourced-only", minimumCoverage: 0, requiredIndicators: [],
-      approvedIndicators: ["global-demand", "global-supply", "commercial-inventories", "spare-capacity", "dxy", "geopolitical-risk", "cot-positioning"],
+      approvedIndicators: ["global-demand", "global-supply", "commercial-inventories", "spare-capacity", "refinery-runs", "dxy", "geopolitical-risk", "cot-positioning"],
     },
     scoreSources: {
       dxy: "dxy", "geopolitical-risk": "gpr", "cot-positioning": "cftc-wti-cot",
       "global-demand": "eia-oil-demand", "global-supply": "eia-oil-supply",
       "commercial-inventories": "eia-oil-inventories", "spare-capacity": "eia-oil-spare-capacity",
+      "refinery-runs": "jodi-refinery",
     },
     summaryTone: { en: "Physical demand, supply and inventory balances frame oil's backdrop.", tr: "Fiziki talep, arz ve stok dengeleri petrolün görünümünü şekillendirir." },
     market: { symbol: "CL=F", unit: "bbl" },
@@ -173,19 +177,19 @@ export const commodityConfigurations = {
     scoreTitle: localized((locale) => messages[locale].macro.oilMacroScoreTitle),
     disclosure: localized((locale) => messages[locale].macro.oilMacroSampleNotice),
     source: { en: "Futures quotes may be delayed and are not spot prices.", tr: "Vadeli işlem fiyatları gecikmeli olabilir; spot fiyat değildir." },
-    refresh: { en: "EIA STEO and GPR downloads are cached for one hour. FRED and CFTC refresh on request. Market quotes require separate permissions.", tr: "EIA STEO ve GPR indirmeleri bir saat önbellekte tutulur. FRED ve CFTC istek üzerine yenilenir. Piyasa fiyatları ayrı izin gerektirir." },
+    refresh: { en: "EIA STEO and GPR downloads are cached for one hour. JODI refreshes after one hour and can reuse successful data for up to six hours. Model snapshots refresh every 15 minutes. FRED and CFTC refresh on request. Market quotes require separate permissions.", tr: "EIA STEO ve GPR indirmeleri bir saat önbellekte tutulur. JODI bir saat sonra yenilenir ve başarılı verileri en fazla altı saat kullanabilir. Model anlık görüntüleri 15 dakikada bir yenilenir. FRED ve CFTC istek üzerine yenilenir. Piyasa fiyatları ayrı izin gerektirir." },
     methodology: {
       en: {
         title: "How to read Oil indicators",
-        description: "The score uses historical EIA liquids demand/supply estimates, OECD commercial stocks, annual OPEC surplus capacity, the broad dollar, GPR and WTI positioning. Refineries remain unavailable. Eligible weights are normalized; coverage is disclosed. These are heuristics, not forecasts.",
+        description: "The score uses historical EIA liquids demand/supply estimates, OECD commercial stocks, annual OPEC surplus capacity, a partial matched-reporting-economy refinery proxy, the broad dollar, GPR and WTI positioning. Eligible weights are normalized; coverage is disclosed. These are heuristics, not forecasts.",
         formulas: ["The 90-day change compares the latest daily close with the closest close at least 90 days earlier. Inventory change is the weekly difference in U.S. crude stocks excluding SPR; its five-year seasonal average uses the nearest weekly change to the same date in each of the previous five years. Gold/oil is compared with the five-year arithmetic mean of matched daily closes. A positive near-minus-later contract spread indicates backwardation; a negative spread indicates contango."],
-        sources: "EIA STEO Table 3a: PATC_WORLD, PAPR_WORLD, PASC_OECD_T3; Fig6: annual-average COPS_OPEC. Only Dates-sheet historical periods are used; forecasts are excluded. FRED DTWEXBGS is not ICE DXY. Caldara-Iacoviello Recent GPR (CC BY 4.0); CFTC Disaggregated Futures Only, WTI Physical 067651, Managed Money long minus short. These feeds need no EIA key. Separate weekly U.S. inventory context (WCESTUS1) requires an EIA API key; market context requires Yahoo permissions. The WTI curve remains unavailable.",
+        sources: "EIA STEO Table 3a: PATC_WORLD, PAPR_WORLD, PASC_OECD_T3; Fig6: annual-average COPS_OPEC. Only Dates-sheet historical periods are used; forecasts are excluded. International Energy Forum (IEF), Joint Organizations Data Initiative (JODI) Oil database: crude oil refinery intake, reporting economies matched across the latest and year-ago months; not global throughput. Earlier points require the same cohort. Access date and coverage are shown on the card. FRED DTWEXBGS is not ICE DXY. Caldara-Iacoviello Recent GPR (CC BY 4.0); CFTC Disaggregated Futures Only, WTI Physical 067651, Managed Money long minus short. These feeds need no EIA key. Separate weekly U.S. inventory context (WCESTUS1) requires an EIA API key; market context requires Yahoo permissions. The WTI curve remains unavailable.",
       },
       tr: {
         title: "Petrol göstergeleri nasıl okunmalı?",
-        description: "Puan; EIA tarihsel sıvı yakıt arz-talep tahminlerini, OECD ticari stoklarını, yıllık OPEC yedek kapasitesini, geniş dolar endeksini, GPR ve WTI pozisyonlarını kullanır. Rafineri verisi mevcut değildir. Uygun ağırlıklar normalize edilir; kapsam açıklanır. Bunlar öngörü değil, sezgisel göstergelerdir.",
+        description: "Puan; EIA tarihsel sıvı yakıt arz-talep tahminlerini, OECD ticari stoklarını, yıllık OPEC yedek kapasitesini, bildirim yapan eşleşmiş ekonomilerden oluşan kısmi rafineri göstergesini, geniş dolar endeksini, GPR ve WTI pozisyonlarını kullanır. Uygun ağırlıklar normalize edilir; kapsam açıklanır. Bunlar öngörü değil, sezgisel göstergelerdir.",
         formulas: ["90 günlük değişim, son günlük kapanışı en az 90 gün önceki kapanışla karşılaştırır. Stok değişimi, SPR hariç haftalık ABD ham petrol stoklarının farkıdır; beş yıllık mevsimsel ortalama önceki beş yılın aynı tarihe en yakın haftalık değişimlerini kullanır. Altın/petrol oranı eşleşen günlük kapanışların beş yıllık aritmetik ortalamasıyla karşılaştırılır. Pozitif yakın vade eksi sonraki vade farkı backwardation, negatif fark contango gösterir."],
-        sources: "EIA STEO Tablo 3a: PATC_WORLD, PAPR_WORLD, PASC_OECD_T3; Fig6: yıllık ortalama COPS_OPEC. Yalnızca Dates sayfasında tarihsel olarak işaretlenen dönemler kullanılır; öngörüler hariçtir. FRED DTWEXBGS, ICE DXY değildir. Caldara-Iacoviello Recent GPR (CC BY 4.0); CFTC yalnızca vadeli işlemler, WTI Physical 067651, fonların uzun eksi kısa pozisyonları. Bu kaynaklar EIA anahtarı gerektirmez. Ayrı haftalık ABD stok bağlamı (WCESTUS1) EIA anahtarı, piyasa bağlamı Yahoo izinleri gerektirir. WTI vade eğrisi mevcut değildir.",
+        sources: "EIA STEO Tablo 3a: PATC_WORLD, PAPR_WORLD, PASC_OECD_T3; Fig6: yıllık ortalama COPS_OPEC. Yalnızca Dates sayfasında tarihsel olarak işaretlenen dönemler kullanılır; öngörüler hariçtir. Uluslararası Enerji Forumu (IEF), Ortak Kuruluşlar Veri Girişimi (JODI) petrol veri tabanı: son ay ile bir yıl önce bildirim yapan eşleşmiş ekonomilerin ham petrol rafineri girdisi; küresel işleme hacmi değildir. Önceki noktalar aynı grubu gerektirir. Erişim tarihi ve kapsam kartta gösterilir. FRED DTWEXBGS, ICE DXY değildir. Caldara-Iacoviello Recent GPR (CC BY 4.0); CFTC yalnızca vadeli işlemler, WTI Physical 067651, fonların uzun eksi kısa pozisyonları. Bu kaynaklar EIA anahtarı gerektirmez. Ayrı haftalık ABD stok bağlamı (WCESTUS1) EIA anahtarı, piyasa bağlamı Yahoo izinleri gerektirir. WTI vade eğrisi mevcut değildir.",
       },
     },
   }, {

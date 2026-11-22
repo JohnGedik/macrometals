@@ -13,7 +13,7 @@ const compress = promisify(gzip);
 const decompress = promisify(gunzip);
 
 const getCachedSnapshot = unstable_cache(
-  async ({ commodity }: { commodity: string; rightsKey: string; month: string; deployment: string }) => {
+  async ({ commodity }: { commodity: string; rightsKey: string; month: string; deployment: string; copperFeedVersion?: number }) => {
     const config = getCommodityConfiguration(commodity);
     if (!config) throw new Error(`Missing commodity configuration: ${commodity}`);
     const model = await loadCommodityModel(config, "en");
@@ -48,6 +48,7 @@ export async function getCachedCommodityModel(commodity: string, locale: Locale)
     rightsKey: commoditySourceRightsKey(config),
     month: new Date().toISOString().slice(0, 7),
     deployment: process.env.VERCEL_GIT_COMMIT_SHA ?? "local",
+    ...(commodity === "copper" ? { copperFeedVersion: 2 } : {}),
   });
   const snapshot = await decompress(Buffer.from(cached.snapshot, "base64"));
   const resolvedConfig = JSON.parse(snapshot.toString("utf8")) as CommodityConfiguration;

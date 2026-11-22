@@ -3,18 +3,19 @@ import { annualPeriodIsRecent, availableObservation, monthlyPeriodIsRecent } fro
 import { getSourceRights } from "@/lib/source-rights";
 import { unverifiedSampleRights } from "@/lib/source-rights";
 import { wgcCentralBankSeriesId, wgcEtfSeriesId } from "@/lib/wgc-gold-observations";
-import { cftcGoldCotSeriesId, cftcSilverCotSeriesId, cftcWtiCotSeriesId, cftcGoldCotSourceUrl } from "@/lib/cftc-cot";
+import { cftcGoldCotSeriesId, cftcSilverCotSeriesId, cftcCopperCotSeriesId, cftcWtiCotSeriesId, cftcGoldCotSourceUrl } from "@/lib/cftc-cot";
 import { eiaOilDefinitions, spareCapacitySeriesId, spareCapacityUrl, steoOilUrl } from "@/lib/eia-oil-parser";
 import { gprSeriesId, gprSourceUrl } from "@/lib/gpr";
 import { silverIndustrialSeriesId, silverSolarSeriesId, silverMineSeriesId, silverEtpSeriesId, silverEtpPdfPage, silverIndustrialUnit, silverSurveyUrl } from "@/lib/silver-industrial-parser";
 import { chinaPmiSeriesId, copperIndustrialDemandSeriesId, copperMineSupplySeriesId, icsgCopperTableUrl } from "@/lib/copper-data-parser";
+import { jodiDownloadPage, jodiRefinerySeriesId } from "@/lib/jodi-refinery-parser";
 
 type ScoreSource = NonNullable<CommodityConfiguration["scoreSources"]>[string];
 type SourceDefinition = {
   source: string;
   url: string;
   seriesId: string;
-  provider: "yahoo" | "fred" | "wgc" | "cftc" | "gpr" | "silver-institute" | "icsg" | "nbs" | "eia";
+  provider: "yahoo" | "fred" | "wgc" | "cftc" | "gpr" | "silver-institute" | "icsg" | "nbs" | "eia" | "jodi";
   frequency: "daily" | "weekly" | "monthly" | "annual";
   measurement: "stock" | "flow" | "rate" | "index";
   normalizedUnit: string;
@@ -33,6 +34,7 @@ const sources: Record<ScoreSource, SourceDefinition> = {
   "wgc-etf-holdings": { source: "World Gold Council · global gold ETF holdings", url: "https://www.gold.org/goldhub/data/gold-etfs-holdings-and-flows", seriesId: wgcEtfSeriesId, provider: "wgc", frequency: "monthly", measurement: "stock", normalizedUnit: "tonnes", maxLagMonths: 2 },
   "cftc-gold-cot": { source: "CFTC · COMEX Gold Disaggregated Futures Only, Managed Money net", url: cftcGoldCotSourceUrl, seriesId: cftcGoldCotSeriesId, provider: "cftc", frequency: "weekly", measurement: "stock", normalizedUnit: "thousand contracts", maxAgeDays: 14 },
   "cftc-silver-cot": { source: "CFTC · COMEX Silver Disaggregated Futures Only, Managed Money net", url: cftcGoldCotSourceUrl, seriesId: cftcSilverCotSeriesId, provider: "cftc", frequency: "weekly", measurement: "stock", normalizedUnit: "thousand contracts", maxAgeDays: 14 },
+  "cftc-copper-cot": { source: "CFTC · COMEX Copper Disaggregated Futures Only, Managed Money net", url: cftcGoldCotSourceUrl, seriesId: cftcCopperCotSeriesId, provider: "cftc", frequency: "weekly", measurement: "stock", normalizedUnit: "thousand contracts", maxAgeDays: 14 },
   gpr: { source: "Caldara and Iacoviello · Recent GPR (CC BY 4.0)", url: gprSourceUrl, seriesId: gprSeriesId, provider: "gpr", frequency: "monthly", measurement: "index", normalizedUnit: "index points", maxLagMonths: 2 },
   "silver-industrial-demand": { source: "The Silver Institute / Metals Focus - World Silver Survey 2026, Industrial (total)", url: `${silverSurveyUrl}#page=11`, seriesId: silverIndustrialSeriesId, provider: "silver-institute", frequency: "annual", measurement: "flow", normalizedUnit: silverIndustrialUnit, maxLagMonths: 16 },
   "silver-solar-demand": { source: "The Silver Institute / Metals Focus - World Silver Survey 2026, of which photovoltaics (included in industrial demand)", url: `${silverSurveyUrl}#page=11`, seriesId: silverSolarSeriesId, provider: "silver-institute", frequency: "annual", measurement: "flow", normalizedUnit: silverIndustrialUnit, maxLagMonths: 16 },
@@ -46,6 +48,7 @@ const sources: Record<ScoreSource, SourceDefinition> = {
   "eia-oil-supply": { source: "EIA STEO - world petroleum and other liquids production (historical estimates)", url: steoOilUrl, seriesId: eiaOilDefinitions["eia-oil-supply"].seriesId, provider: "eia", frequency: "monthly", measurement: "rate", normalizedUnit: "million barrels/day", maxLagMonths: 2, geography: "Global", aggregation: "monthly-average" },
   "eia-oil-inventories": { source: "EIA STEO - OECD end-of-period commercial crude oil and other liquids inventories", url: steoOilUrl, seriesId: eiaOilDefinitions["eia-oil-inventories"].seriesId, provider: "eia", frequency: "monthly", measurement: "stock", normalizedUnit: "million barrels", maxLagMonths: 2, geography: "OECD", aggregation: "month-end" },
   "eia-oil-spare-capacity": { source: "EIA STEO - OPEC surplus crude oil production capacity (annual average historical estimates)", url: spareCapacityUrl, seriesId: spareCapacitySeriesId, provider: "eia", frequency: "annual", measurement: "rate", normalizedUnit: "million barrels/day", maxLagMonths: 16, geography: "OPEC", aggregation: "annual-average" },
+  "jodi-refinery": { source: "International Energy Forum (IEF) · Joint Organizations Data Initiative (JODI) · matched reporting economies", url: jodiDownloadPage, seriesId: jodiRefinerySeriesId, provider: "jodi", frequency: "monthly", measurement: "rate", normalizedUnit: "million barrels/day", maxLagMonths: 2, geography: "Matched reporting economies (not global)", aggregation: "monthly-average" },
 };
 
 export function commoditySourceRightsKey(config: CommodityConfiguration): string {

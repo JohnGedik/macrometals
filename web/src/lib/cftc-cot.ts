@@ -4,10 +4,12 @@ export const cftcGoldCotSeriesId = "CFTC-72HH-3QPY-088691-MANAGED-MONEY-NET";
 export const cftcGoldCotApiUrl = "https://publicreporting.cftc.gov/resource/72hh-3qpy.json";
 export const cftcGoldCotSourceUrl = "https://publicreporting.cftc.gov/stories/s/r4w3-av2u";
 export const cftcSilverCotSeriesId = "CFTC-72HH-3QPY-084691-MANAGED-MONEY-NET";
+export const cftcCopperCotSeriesId = "CFTC-72HH-3QPY-085692-MANAGED-MONEY-NET";
 export const cftcWtiCotSeriesId = "CFTC-72HH-3QPY-067651-MANAGED-MONEY-NET";
 export const cftcCotDefinitions = {
   gold: { contractCode: "088691", seriesId: cftcGoldCotSeriesId },
   silver: { contractCode: "084691", seriesId: cftcSilverCotSeriesId },
+  copper: { contractCode: "085692", seriesId: cftcCopperCotSeriesId },
   oil: { contractCode: "067651", seriesId: cftcWtiCotSeriesId },
 } as const;
 

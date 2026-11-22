@@ -10,8 +10,18 @@ export type CopperFeeds = {
   "china-pmi": readonly Observation[];
 };
 
-let cache: { expiresAt: number; feeds: Partial<CopperFeeds> } | null = null;
-let pending: Promise<Partial<CopperFeeds>> | null = null;
+const refreshIntervalMs = 60 * 60 * 1000;
+const retentionMs = 6 * 60 * 60 * 1000;
+
+type FeedCache<T> = {
+  value: T | null;
+  refreshedAt: number;
+  pending: Promise<T | null> | null;
+};
+
+const icsgCache: FeedCache<Pick<CopperFeeds, "copper-industrial-demand" | "copper-mine-supply">> =
+  { value: null, refreshedAt: 0, pending: null };
+const pmiCache: FeedCache<CopperFeeds["china-pmi"]> = { value: null, refreshedAt: 0, pending: null };
 
 async function fetchApprovedSource(url: string, timeout: number) {
   let failure: unknown;
@@ -56,20 +66,31 @@ async function loadNbsPmi(retrievedAt: number) {
   return parseNbsChinaPmi(await releaseResponse.text(), releaseUrl, retrievedAt);
 }
 
-async function load(): Promise<Partial<CopperFeeds>> {
-  const retrievedAt = Date.now() / 1000;
-  const [icsg, pmi] = await Promise.allSettled([loadIcsg(retrievedAt), loadNbsPmi(retrievedAt)]);
-  const feeds: Partial<CopperFeeds> = {};
-  if (icsg.status === "fulfilled") Object.assign(feeds, icsg.value);
-  else console.error("ICSG copper data download failed", icsg.reason instanceof Error ? icsg.reason.message : "Unknown error");
-  if (pmi.status === "fulfilled") feeds["china-pmi"] = pmi.value;
-  else console.error("NBS manufacturing PMI download failed", pmi.reason instanceof Error ? pmi.reason.message : "Unknown error");
-  if (Object.keys(feeds).length === 3) cache = { expiresAt: Date.now() + 6 * 60 * 60 * 1000, feeds };
-  return feeds;
+async function getFeed<T>(cache: FeedCache<T>, load: (retrievedAt: number) => Promise<T>, name: string): Promise<T | null> {
+  const age = Date.now() - cache.refreshedAt;
+  if (cache.value !== null && age >= 0 && age < refreshIntervalMs) return cache.value;
+  if (age < 0 || age >= retentionMs) cache.value = null;
+  cache.pending ??= (async () => {
+    try {
+      const retrievedAt = Date.now();
+      const value = await load(retrievedAt / 1000);
+      cache.value = value;
+      cache.refreshedAt = retrievedAt;
+      return value;
+    } catch (error) {
+      console.error(`${name} download failed`, error instanceof Error ? error.message : "Unknown error",
+        error instanceof Error && error.cause instanceof Error ? error.cause.message : undefined);
+      const cacheAge = Date.now() - cache.refreshedAt;
+      return cache.value !== null && cacheAge >= 0 && cacheAge < retentionMs ? cache.value : null;
+    }
+  })().finally(() => { cache.pending = null; });
+  return cache.pending;
 }
 
 export async function getCopperFeeds() {
-  if (cache && cache.expiresAt > Date.now()) return cache.feeds;
-  pending ??= load().finally(() => { pending = null; });
-  return pending;
+  const [icsg, pmi] = await Promise.all([
+    getFeed(icsgCache, loadIcsg, "ICSG copper data"),
+    getFeed(pmiCache, loadNbsPmi, "NBS manufacturing PMI"),
+  ]);
+  return { ...(icsg ?? {}), ...(pmi ? { "china-pmi": pmi } : {}) };
 }

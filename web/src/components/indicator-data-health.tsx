@@ -31,6 +31,11 @@ export function IndicatorDataHealth({ health, locale, exclusionReason }: { healt
         <div><dt>{t.frequencyLabel}</dt><dd>{frequencies[health.frequency]}</dd></div>
       </dl>
       {health.freshnessBasis === "official-release-and-reporting-lag" && <p className="indicator-health-note">{t.monthlyFreshnessNote.replace("{months}", String(health.maxLagMonths))}</p>}
+      {provenance?.coverage && <p className="indicator-health-note">
+        {locale === "tr"
+          ? `Eşleşen ekonomiler: ${provenance.coverage.matchedCountries.length}; son ayda bildirenler: ${provenance.coverage.reportingCountries.length}. Küresel toplam değildir. Eşleşen ülke kodları: ${provenance.coverage.matchedCountries.join(", ")}. JODI erişim tarihi: ${formatDate(provenance.retrievedAt)}.`
+          : `Matched economies: ${provenance.coverage.matchedCountries.length}; latest-month reporters: ${provenance.coverage.reportingCountries.length}. Not a global total. Matched economy codes: ${provenance.coverage.matchedCountries.join(", ")}. JODI accessed: ${formatDate(provenance.retrievedAt)}.`}
+      </p>}
       {health.rights?.map((rights, index) => <p className="indicator-health-note" key={rights.termsUrl ?? rights.status + index}>
         {rightsStatuses[rights.status]} {rights.termsUrl && <a href={rights.termsUrl} target="_blank" rel="noopener noreferrer">{t.sourceRightsTerms}</a>}
       </p>)}

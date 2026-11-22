@@ -18,6 +18,7 @@ export type ObservationProvenance = {
   multiplier: number;
   seasonalAdjustment: "SA" | "NSA" | "not-applicable";
   aggregation: "daily-observation" | "weekly-report" | "monthly-average" | "monthly-sum" | "monthly-index" | "month-end" | "annual-total" | "annual-average" | "year-end";
+  coverage?: { matchedCountries: string[]; reportingCountries: string[] };
 };
 export type DataObservation = { time: number; value: number; reportingPeriod?: ReportingPeriod; provenance?: ObservationProvenance };
 export type FredSeriesDefinition = {

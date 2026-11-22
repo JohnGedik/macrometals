@@ -21,6 +21,7 @@ process.env.SILVER_MINE_SUPPLY_PUBLIC_USE_CONFIRMED = "false";
 process.env.SILVER_ETP_HOLDINGS_PUBLIC_USE_CONFIRMED = "false";
 process.env.FRED_T10YIE_PUBLIC_USE_CONFIRMED = "false";
 process.env.CFTC_COT_SILVER_PUBLIC_USE_CONFIRMED = "false";
+process.env.CFTC_COT_COPPER_PUBLIC_USE_CONFIRMED = "false";
 process.env.CFTC_COT_WTI_PUBLIC_USE_CONFIRMED = "false";
 
 const aliases = registerHooks({
@@ -328,7 +329,7 @@ test("registered public commodities approve only explicitly cleared factors", ()
     assert.deepEqual(result.policy.approvedIndicators, config.commodity === "gold"
       ? ["gold-seasonality", "real-rates", "dxy", "central-bank-purchases", "etf-holdings", "breakeven", "m2", "geopolitical-risk", "cot-positioning"]
       : config.commodity === "silver" ? ["industrial-demand", "solar-demand", "etf-holdings", "mine-supply", "breakeven", "cot-positioning", "real-rates", "dxy"]
-      : config.commodity === "copper" ? ["industrial-demand", "china-pmi", "mine-supply", "dxy", "real-rates"]
+      : config.commodity === "copper" ? ["industrial-demand", "china-pmi", "mine-supply", "dxy", "real-rates", "cot-positioning"]
       : ["global-demand", "global-supply", "commercial-inventories", "spare-capacity", "dxy", "geopolitical-risk", "cot-positioning"]);
     assert.equal(result.score, null);
     assert.equal(result.coverage, config.commodity === "gold" ? 5 : 0);
@@ -2112,6 +2113,67 @@ World Refined Copper Usage 2/ 25,857 26,633 27,416 28,159 18,960`;
   assert.equal(pmi.at(-1).value, 49.3);
   assert.equal(pmi.at(-1).reportingPeriod.label, "2026-10");
   assert.equal(pmi.at(-1).provenance.seasonalAdjustment, "SA");
+
+  const config = hydrateCommodityObservations(commodityConfigurations.copper, { ...copper, "china-pmi": pmi }, checkedAt);
+  const dashboard = presentCommodityModel(config, "en");
+  assert.equal(dashboard.summary.coverage, 55);
+  for (const [id, value] of [["industrial-demand", "28.2 Mt"], ["mine-supply", "23.2 Mt"], ["china-pmi", "49.3"]]) {
+    const card = dashboard.cards.find((item) => item.id === id);
+    assert.equal(card.value, value);
+    assert.equal(card.dataHealth.status, "fresh");
+    assert.notEqual(card.factorScore, null);
+  }
+  assert.equal(dashboard.cards.find((item) => item.id === "exchange-inventories").value, "—");
+});
+
+test("Copper CFTC positioning uses the approved COMEX contract and respects availability and rights", async () => {
+  const flag = "CFTC_COT_COPPER_PUBLIC_USE_CONFIRMED";
+  const previous = process.env[flag];
+  const originalNow = Date.now;
+  const originalFetch = globalThis.fetch;
+  Date.now = () => Date.parse("2026-11-22T13:00:00Z");
+  process.env[flag] = "true";
+  const rows = [
+    { cftc_contract_market_code: "085692", report_date_as_yyyy_mm_dd: "2026-11-17T00:00:00.000", m_money_positions_long_all: "52057", m_money_positions_short_all: "23365" },
+    { cftc_contract_market_code: "085692", report_date_as_yyyy_mm_dd: "2025-11-11T00:00:00.000", m_money_positions_long_all: "10000", m_money_positions_short_all: "20000" },
+  ];
+  let requests = 0;
+  globalThis.fetch = async (raw, options) => {
+    const url = new URL(String(raw));
+    assert.equal(url.hostname, "publicreporting.cftc.gov");
+    assert.equal(url.searchParams.get("$where"), "cftc_contract_market_code='085692'");
+    assert.equal(options.cache, "no-store");
+    requests++;
+    return Response.json(rows);
+  };
+  const config = { ...commodityConfigurations.copper, contextProvider: undefined, scoreSources: { "cot-positioning": "cftc-copper-cot" } };
+  try {
+    const dashboard = await getMacroIndicators(config, "en");
+    const card = dashboard.cards.find((item) => item.id === "cot-positioning");
+    assert.equal(card.value, "29k");
+    assert.equal(card.previousValue, "-10k");
+    assert.equal(card.dataHealth.status, "fresh");
+    assert.equal(card.dataHealth.provenance.seriesId, cftcCotDefinitions.copper.seriesId);
+    assert.equal(card.factorScore, 100);
+    assert.equal(dashboard.summary.coverage, 5);
+    assert.deepEqual(parseCftcManagedMoney([{ ...rows[0], cftc_contract_market_code: "084691" }], cftcCotDefinitions.copper), []);
+    assert.equal(parseCftcManagedMoney([rows[1]], cftcCotDefinitions.copper)[0].value, -10);
+
+    Date.now = () => Date.parse("2026-12-03T13:00:00Z");
+    const stale = await getMacroIndicators(config, "en");
+    assert.equal(stale.cards.find((item) => item.id === "cot-positioning").dataHealth.status, "stale");
+    assert.equal(stale.summary.coverage, 0);
+    process.env[flag] = "false";
+    const previousRequests = requests;
+    const denied = await getMacroIndicators(config, "en");
+    assert.equal(requests, previousRequests);
+    assert.equal(denied.cards.find((item) => item.id === "cot-positioning").value, "—");
+  } finally {
+    Date.now = originalNow;
+    globalThis.fetch = originalFetch;
+    if (previous === undefined) delete process.env[flag];
+    else process.env[flag] = previous;
+  }
 });
 
 test("Oil assembles all seven verified sources in both locales with 90 percent coverage and hourly EIA reuse", async () => {

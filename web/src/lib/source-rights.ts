@@ -1,6 +1,6 @@
 export type SourceRightsStatus = "permission-confirmed" | "review-required" | "public-domain-attribution" | "provenance-unverified";
 export type SourceRightsDisclosure = { status: SourceRightsStatus; termsUrl?: string };
-export type SourceProvider = "yahoo" | "fred" | "wgc" | "cftc" | "gpr" | "silver-institute" | "icsg" | "nbs" | "eia" | "public-domain";
+export type SourceProvider = "yahoo" | "fred" | "wgc" | "cftc" | "gpr" | "silver-institute" | "icsg" | "nbs" | "eia" | "jodi" | "public-domain";
 export const unverifiedSampleRights: SourceRightsDisclosure = { status: "provenance-unverified" };
 
 const yahooTermsUrl = "https://legal.yahoo.com/us/en/yahoo/terms/otos/index.html";
@@ -16,6 +16,7 @@ const wgcSeriesFlags: Record<string, string> = {
 const cftcSeriesFlags: Record<string, string> = {
   "CFTC-72HH-3QPY-088691-MANAGED-MONEY-NET": "CFTC_COT_GOLD_PUBLIC_USE_CONFIRMED",
   "CFTC-72HH-3QPY-084691-MANAGED-MONEY-NET": "CFTC_COT_SILVER_PUBLIC_USE_CONFIRMED",
+  "CFTC-72HH-3QPY-085692-MANAGED-MONEY-NET": "CFTC_COT_COPPER_PUBLIC_USE_CONFIRMED",
   "CFTC-72HH-3QPY-067651-MANAGED-MONEY-NET": "CFTC_COT_WTI_PUBLIC_USE_CONFIRMED",
 };
 const gprSeriesFlags: Record<string, string> = {
@@ -42,6 +43,8 @@ export function getSourceRights(provider: SourceProvider, seriesId?: string) {
         ? !!seriesId && !!cftcSeriesFlags[seriesId] && process.env[cftcSeriesFlags[seriesId]] === "true"
         : provider === "gpr"
           ? !!seriesId && !!gprSeriesFlags[seriesId] && process.env[gprSeriesFlags[seriesId]] === "true"
+          : provider === "jodi"
+            ? seriesId === "JODI-CRUDEOIL-REFINOBS-KBD-MATCHED" && process.env.JODI_REFINERY_PUBLIC_USE_CONFIRMED === "true"
           : provider === "silver-institute"
             ? !!seriesId && !!silverInstituteSeriesFlags[seriesId] && process.env[silverInstituteSeriesFlags[seriesId]] === "true"
             : !!seriesId && process.env[`FRED_${seriesId}_PUBLIC_USE_CONFIRMED`] === "true";
@@ -49,7 +52,8 @@ export function getSourceRights(provider: SourceProvider, seriesId?: string) {
     allowed,
     disclosure: { status: allowed ? "permission-confirmed" as const : "review-required" as const,
       termsUrl: provider === "yahoo" ? yahooTermsUrl : provider === "wgc" ? wgcTermsUrl : provider === "cftc" ? cftcTermsUrl : provider === "gpr" ? gprTermsUrl
-        : provider === "silver-institute" ? "https://silverinstitute.org/all-world-silver-surveys-2025/" : fredTermsUrl },
+        : provider === "silver-institute" ? "https://silverinstitute.org/all-world-silver-surveys-2025/"
+        : provider === "jodi" ? "https://www.jodidata.org/oil/support/user-guide.aspx" : fredTermsUrl },
   };
 }
 
