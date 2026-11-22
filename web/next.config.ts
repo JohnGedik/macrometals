@@ -5,7 +5,7 @@ const nextConfig: NextConfig = {
   outputFileTracingIncludes: {
     "/*": ["./content/articles/**/*.md", "./node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs"],
   },
-  serverExternalPackages: ["pdfjs-dist"],
+  serverExternalPackages: ["pdfjs-dist", "@napi-rs/canvas"],
   turbopack: {
     root: process.cwd(),
     rules: {

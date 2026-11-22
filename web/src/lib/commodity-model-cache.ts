@@ -48,7 +48,7 @@ export async function getCachedCommodityModel(commodity: string, locale: Locale)
     rightsKey: commoditySourceRightsKey(config),
     month: new Date().toISOString().slice(0, 7),
     deployment: process.env.VERCEL_GIT_COMMIT_SHA ?? "local",
-    ...(commodity === "copper" ? { copperFeedVersion: 2 } : {}),
+    ...(commodity === "copper" ? { copperFeedVersion: 3 } : {}),
   });
   const snapshot = await decompress(Buffer.from(cached.snapshot, "base64"));
   const resolvedConfig = JSON.parse(snapshot.toString("utf8")) as CommodityConfiguration;

@@ -6,17 +6,20 @@ test("copper providers refresh independently and retain successful data only wit
   const originalNow = Date.now;
   const originalFetch = globalThis.fetch;
   const originalError = console.error;
+  const originalDOMMatrix = Object.getOwnPropertyDescriptor(globalThis, "DOMMatrix");
   const stateKey = Symbol.for("macrometals.test.copper-feed");
   const previousState = globalThis[stateKey];
   const state = { now: Date.parse("2026-11-18T16:00:00Z"), icsgRequests: 0, nbsRequests: 0, failIcsg: false, failNbs: true, errors: [] };
   globalThis[stateKey] = state;
   Date.now = () => state.now;
+  delete globalThis.DOMMatrix;
   console.error = (...args) => state.errors.push(args);
   const hooks = registerHooks({
     resolve(specifier, context, nextResolve) {
       if (specifier === "server-only") return nextResolve(new URL("./server-only.stub.mjs", import.meta.url).href, context);
       if (specifier === "pdfjs-dist/legacy/build/pdf.mjs") {
-        const pdf = `export const getDocument = () => ({ promise: Promise.resolve({
+        const pdf = `if (typeof globalThis.DOMMatrix !== "function") throw new Error("DOMMatrix is missing before PDF module initialization");
+        export const getDocument = () => ({ promise: Promise.resolve({
           getPage: async () => ({ getTextContent: async () => ({ items: [
             { str: "TABLE 1. WORLD REFINED COPPER PRODUCTION AND USAGE TRENDS", hasEOL: true },
             { str: "Thousand metric tonnes, copper", hasEOL: true },
@@ -83,6 +86,8 @@ test("copper providers refresh independently and retain successful data only wit
     Date.now = originalNow;
     globalThis.fetch = originalFetch;
     console.error = originalError;
+    if (originalDOMMatrix) Object.defineProperty(globalThis, "DOMMatrix", originalDOMMatrix);
+    else delete globalThis.DOMMatrix;
     globalThis[stateKey] = previousState;
   }
 });

@@ -45,6 +45,10 @@ async function loadIcsg(retrievedAt: number) {
   const response = await fetchApprovedSource(icsgCopperTableUrl, 30_000);
   const bytes = new Uint8Array(await response.arrayBuffer());
   if (!bytes.length || bytes.length > 8_000_000) throw new Error("ICSG copper table is empty or exceeds the size limit");
+  if (!globalThis.DOMMatrix) {
+    const { DOMMatrix } = await import("@napi-rs/canvas");
+    Object.defineProperty(globalThis, "DOMMatrix", { value: DOMMatrix, writable: true, configurable: true });
+  }
   const { getDocument } = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const document = await getDocument({ data: bytes, disableFontFace: true, useSystemFonts: true }).promise;
   try {
