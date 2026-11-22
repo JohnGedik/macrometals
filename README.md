@@ -44,6 +44,8 @@ The header's Community menu links to articles and discussions; the account menu 
 
 Each article is a Markdown document at `web/content/articles/<slug>/index.md`. YAML frontmatter defines its `id`, `slug`, `title`, `summary`, `coverImage`, `publishedAt`, `tags`, and `author`; the document body supports standard Markdown. Keep the article `id` aligned with its row in the Supabase `articles` table so comments continue to reference the correct article.
 
+When replacing article copy, edit below the closing `---` and keep the frontmatter. A missing `slug`, `title`, or `author` can break the homepage, article pages, and sitemap because they all read the shared article collection. After an edit, check the homepage and article in a running local site; a successful build alone does not exercise those routes.
+
 To provide a Turkish translation, add `index.tr.md` in the same article directory with matching `id`, `slug`, `tags`, and author identity. Translate the title, summary, author bio, and body. If `index.tr.md` is absent, that article displays in English while the rest of the interface remains Turkish.
 
 Members can publish Markdown articles from `/write`. Drafts are private to their author; publishing makes the article available in the Community feed and existing article routes. Voting is one vote per account per article; selecting the active direction removes the vote, and selecting the opposite direction changes it. Commenting continues to use the existing flat comment system.

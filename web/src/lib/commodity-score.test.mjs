@@ -326,7 +326,7 @@ test("registered public commodities approve only explicitly cleared factors", ()
     assert.equal(result.policy.minimumCoverage, partialCoverage ? 0 : 80);
     assert.equal(result.policy.requiredIndicators.length === 0, partialCoverage);
     assert.deepEqual(result.policy.approvedIndicators, config.commodity === "gold"
-      ? ["gold-seasonality", "real-rates", "dxy", "breakeven", "central-bank-purchases", "etf-holdings", "cot-positioning"]
+      ? ["gold-seasonality", "real-rates", "dxy", "central-bank-purchases", "etf-holdings", "breakeven", "m2", "geopolitical-risk", "cot-positioning"]
       : config.commodity === "silver" ? ["industrial-demand", "solar-demand", "etf-holdings", "mine-supply", "breakeven", "cot-positioning", "real-rates", "dxy"]
       : config.commodity === "copper" ? ["industrial-demand", "china-pmi", "mine-supply", "dxy", "real-rates"]
       : ["global-demand", "global-supply", "commercial-inventories", "spare-capacity", "dxy", "geopolitical-risk", "cot-positioning"]);
@@ -844,7 +844,7 @@ test("public dashboards hide samples with undocumented origins while excluding t
     assert.deepEqual(dashboard.summary.dataMix, config.commodity === "gold"
       ? { sourcedWeight: 5, sampleWeight: 0, excludedWeight: 95 }
       : { sourcedWeight: 0, sampleWeight: 0, excludedWeight: 100 });
-    assert.equal(dashboard.summary.release.approvedCount, config.commodity === "silver" ? 8 : config.commodity === "copper" ? 5 : 7);
+    assert.equal(dashboard.summary.release.approvedCount, config.commodity === "gold" ? 9 : config.commodity === "silver" ? 8 : config.commodity === "copper" ? 5 : 7);
     assert.equal(dashboard.summary.release.referenceSampleWeight, config.commodity === "gold" ? 95 : 100);
     const seasonality = dashboard.cards.find((card) => card.id === "gold-seasonality");
     const unverifiedSamples = dashboard.cards.filter((card) => card.id !== "gold-seasonality");
@@ -1018,7 +1018,7 @@ test("GPR parser selects only the monthly Recent GPR index and retains its vinta
   assert.deepEqual(parseRecentGprRows(otherVariant, retrievedAt), []);
 });
 
-test("Gold displays GPR without scoring approval while Oil includes the approved monthly factor", async () => {
+test("Gold and Oil include the approved monthly GPR factor", async () => {
   const originalFetch = globalThis.fetch;
   const previousFlag = process.env.GPR_CI_PUBLIC_USE_CONFIRMED;
   process.env.GPR_CI_PUBLIC_USE_CONFIRMED = "true";
@@ -1042,7 +1042,7 @@ test("Gold displays GPR without scoring approval while Oil includes the approved
       assert.equal(gpr.dataHealth.status, "fresh");
       assert.equal(gpr.dataHealth.frequency, "monthly");
       assert.equal(gpr.dataHealth.provenance.aggregation, "monthly-index");
-      assert.equal(gpr.scoreExclusion, configuration.commodity === "oil" ? null : "unapproved");
+      assert.equal(gpr.scoreExclusion, null);
     }
     assert.equal(fetchCount, 1);
   } finally {
@@ -1246,7 +1246,7 @@ test("monthly hydration uses a reporting lag policy and preserves scoring restri
   assert.equal(factor.dataHealth.provenance.aggregation, "monthly-average");
   assert.equal(factor.dataHealth.provenance.publishedAt, null);
   assert.equal(scoreCommodity(config).score, null);
-  assert.equal(scoreCommodity(config).indicators.find((indicator) => indicator.id === "m2").exclusionReason, "unapproved");
+  assert.equal(scoreCommodity(config).indicators.find((indicator) => indicator.id === "m2").exclusionReason, null);
   const later = Date.parse("2026-12-01") / 1000;
   const old = hydrateCommodityObservations(commodityConfigurations.gold, { m2 }, later, { m2: { release: { ...evidence.m2.release, checkedAt: later } } });
   assert.equal(old.indicators.find((indicator) => indicator.id === "m2").dataHealth.status, "stale");
@@ -1323,8 +1323,8 @@ test("Gold M2 and five-year breakeven reach reference cards with actual metadata
     assert.equal(breakeven.dataHealth.provenance.seriesId, "T5YIE");
     assert.equal(dashboard.summary.release.referenceSampleWeight, 30);
     assert.equal(dashboard.summary.score, null);
-    assert.equal(dashboard.summary.release.approvedCount, 7);
-    assert.equal(m2.factorScore, null);
+    assert.equal(dashboard.summary.release.approvedCount, 9);
+    assert.notEqual(m2.factorScore, null);
     releaseOffline = true;
     const unchecked = await getMacroIndicators(config, "en");
     const uncheckedM2 = unchecked.cards.find((card) => card.id === "m2");

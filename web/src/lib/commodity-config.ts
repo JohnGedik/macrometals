@@ -67,7 +67,7 @@ export const commodityConfigurations = {
     scoringPolicy: {
       mode: "sourced-only", minimumCoverage: 80,
       requiredIndicators: ["real-rates", "gold-seasonality", "dxy", "central-bank-purchases", "etf-holdings"],
-      approvedIndicators: ["gold-seasonality", "real-rates", "dxy", "breakeven", "central-bank-purchases", "etf-holdings", "cot-positioning"],
+      approvedIndicators: ["gold-seasonality", "real-rates", "dxy", "central-bank-purchases", "etf-holdings", "breakeven", "m2", "geopolitical-risk", "cot-positioning"],
     },
     scoreSources: {
       dxy: "dxy",
